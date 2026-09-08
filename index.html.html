@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>買いもの手帳</title>
+<style>
+  :root{
+    --bg: #F6F3EC;
+    --panel: #FFFFFF;
+    --ink: #2E2A22;
+    --ink-soft: #6E6656;
+    --line: #E4DDC9;
+    --forest: #3B4A3A;
+    --forest-soft: #E9EEE6;
+    --mustard: #D8A73D;
+    --mustard-soft: #FBF0D6;
+    --brick: #B5482A;
+    --brick-soft: #F7E4DD;
+    --sage: #8CA084;
+    --radius-s: 8px;
+    --radius-m: 14px;
+    --radius-l: 20px;
+    --shadow: 0 1px 2px rgba(46,42,34,0.06), 0 4px 14px rgba(46,42,34,0.06);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family: "Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overscroll-behavior-y:none;
+  }
+  #app{
+    max-width:520px;
+    margin:0 auto;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    position:relative;
+    background:var(--bg);
+  }
+  header.top{
+    position:sticky; top:0; z-index:20;
+    background:var(--bg);
+    padding:14px 18px 10px;
+    border-bottom:1px solid var(--line);
+  }
+  header.top h1{
+    margin:0; font-size:19px; font-weight:700; letter-spacing:.02em;
+  }
+  header.top .sub{
+    font-size:12px; color:var(--ink-soft); margin-top:2px;
+  }
+  main{
+    flex:1;
+    padding:14px 14px 96px;
+    overflow-y:auto;
+  }
+  .view{ display:none; }
+  .view.active{ display:block; animation:fadeIn .18s ease; }
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;} }
+
+  nav.tabbar{
+    position:fixed; left:0; right:0; bottom:0;
+    max-width:520px; margin:0 auto;
+    display:flex;
+    background:rgba(255,255,255,0.92);
+    backdrop-filter:blur(10px);
+    border-top:1px solid var(--line);
+    padding:6px 6px calc(6px + env(safe-area-inset-bottom));
+    z-index:30;
+  }
+  nav.tabbar button{
+    flex:1;
+    background:none; border:none;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    padding:6px 0 2px;
+    font-family:inherit;
+    color:var(--ink-soft);
+    font-size:11px;
+    cursor:pointer;
+  }
+  nav.tabbar button .ic{ font-size:20px; line-height:1; }
+  nav.tabbar button.active{ color:var(--forest); font-weight:700; }
+  nav.tabbar button .badge{
+    position:absolute; transform:translate(10px,-8px);
+    background:var(--brick); color:#fff; font-size:10px; font-weight:700;
+    min-width:16px; height:16px; border-radius:8px;
+    display:flex; align-items:center; justify-content:center; padding:0 4px;
+  }
+
+  .section-title{
+    font-size:13px; font-weight:700; color:var(--ink-soft);
+    margin:18px 2px 8px; display:flex; align-items:center; justify-content:space-between;
+  }
+  .section-title:first-child{ margin-top:0; }
+  .card{
+    background:var(--panel); border-radius:var(--radius-m);
+    box-shadow:var(--shadow);
+    padding:12px 14px;
+  }
+  .list{ display:flex; flex-direction:column; gap:8px; }
+  .row{
+    display:flex; align-items:center; gap:10px;
+    background:var(--panel); border-radius:var(--radius-m);
+    padding:11px 13px; box-shadow:var(--shadow);
+  }
+  .row .check{
+    width:22px; height:22px; border-radius:50%;
+    border:2px solid var(--sage); flex:none;
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-size:13px;
+  }
+  .row.done .check{ background:var(--sage); }
+  .row .name{ flex:1; font-size:15px; font-weight:600; }
+  .row.done .name{ text-decoration:line-through; color:var(--ink-soft); }
+  .row .meta{ font-size:11px; color:var(--ink-soft); margin-top:2px; }
+  .tag{
+    font-size:10px; font-weight:700; padding:2px 7px; border-radius:99px;
+    background:var(--forest-soft); color:var(--forest);
+  }
+  .tag.auto{ background:var(--brick-soft); color:var(--brick); }
+  .price-hint{ font-size:11.5px; color:var(--forest); font-weight:700; white-space:nowrap; }
+
+  .fab{
+    position:fixed; right:calc(50% - 260px + 18px); bottom:86px;
+    width:54px; height:54px; border-radius:50%;
+    background:var(--forest); color:#fff; font-size:26px; border:none;
+    box-shadow:0 6px 16px rgba(59,74,58,0.35);
+    display:flex; align-items:center; justify-content:center;
+    z-index:25; cursor:pointer;
+  }
+  @media (max-width:559px){
+    .fab{ right:18px; }
+  }
+
+  /* bottom sheet */
+  .sheet-backdrop{
+    position:fixed; inset:0; background:rgba(30,28,20,0.4);
+    z-index:50; display:none;
+  }
+  .sheet-backdrop.show{ display:block; }
+  .sheet{
+    position:fixed; left:0; right:0; bottom:0;
+    max-width:520px; margin:0 auto;
+    background:var(--bg);
+    border-radius:20px 20px 0 0;
+    max-height:86vh;
+    display:flex; flex-direction:column;
+    transform:translateY(100%);
+    transition:transform .22s ease;
+    z-index:51;
+    box-shadow:0 -8px 30px rgba(0,0,0,0.2);
+  }
+  .sheet.show{ transform:translateY(0); }
+  .sheet .handle{ width:36px; height:4px; background:var(--line); border-radius:2px; margin:10px auto 4px; }
+  .sheet .sheet-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:6px 18px 10px; border-bottom:1px solid var(--line);
+  }
+  .sheet .sheet-head h2{ font-size:16px; margin:0; }
+  .sheet .sheet-head button{ background:none; border:none; font-size:14px; color:var(--forest); font-weight:700; padding:6px; }
+  .sheet-body{ padding:14px 18px 24px; overflow-y:auto; }
+
+  .chip-row{ display:flex; flex-wrap:wrap; gap:8px; }
+  .chip{
+    padding:9px 15px; border-radius:99px; border:1.5px solid var(--line);
+    background:#fff; font-size:14px; font-weight:600; color:var(--ink);
+    cursor:pointer;
+  }
+  .chip.cat{ font-size:14px; }
+  .chip.selected{ background:var(--forest); color:#fff; border-color:var(--forest); }
+  .chip.item.selected{ background:var(--mustard); color:#fff; border-color:var(--mustard); }
+
+  input, select, textarea{
+    font-family:inherit; font-size:15px; padding:10px 12px;
+    border:1.5px solid var(--line); border-radius:var(--radius-s);
+    background:#fff; width:100%; color:var(--ink);
+  }
+  label.field{ display:block; font-size:12px; color:var(--ink-soft); font-weight:700; margin:12px 0 6px; }
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center;
+    padding:12px 18px; border-radius:var(--radius-s); border:none;
+    font-weight:700; font-size:15px; cursor:pointer;
+  }
+  .btn.primary{ background:var(--forest); color:#fff; width:100%; }
+  .btn.ghost{ background:none; color:var(--brick); }
+  .btn.block{ width:100%; margin-top:14px; }
+  .btn.small{ padding:7px 12px; font-size:13px; }
+  .row-actions{ display:flex; gap:8px; }
+
+  .empty{
+    text-align:center; padding:40px 10px; color:var(--ink-soft); font-size:13.5px;
+  }
+  .empty .big{ font-size:30px; margin-bottom:8px; }
+
+  /* fridge */
+  .fridge-body{
+    background:linear-gradient(180deg,#EDEAE0,#E5E1D3);
+    border-radius:var(--radius-l);
+    padding:14px 12px 18px;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.08), var(--shadow);
+  }
+  .shelf{
+    background:rgba(255,255,255,0.55);
+    border:1px solid rgba(255,255,255,0.7);
+    border-radius:12px;
+    padding:10px 10px 12px;
+    margin-bottom:12px;
+  }
+  .shelf-title{ font-size:11.5px; font-weight:700; color:var(--forest); margin:0 2px 8px; display:flex; align-items:center; gap:6px;}
+  .shelf-grid{
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(72px,1fr)); gap:8px;
+  }
+  .jar{
+    background:#fff; border-radius:12px; padding:8px 6px 7px;
+    text-align:center; box-shadow:0 1px 3px rgba(0,0,0,0.08);
+    border:2px solid transparent;
+    position:relative;
+  }
+  .jar .emoji{ font-size:22px; }
+  .jar .jname{ font-size:10.5px; font-weight:700; margin-top:3px; line-height:1.2; word-break:break-all;}
+  .jar .jdays{ font-size:9px; color:var(--ink-soft); margin-top:1px; }
+  .jar.warn{ border-color:var(--mustard); background:var(--mustard-soft); }
+  .jar.expired{ border-color:var(--brick); background:var(--brick-soft); }
+  .jar.expired .jname{ color:var(--brick); }
+  .jar .xbtn{
+    position:absolute; top:-6px; right:-6px; width:20px; height:20px; border-radius:50%;
+    background:var(--ink); color:#fff; font-size:11px; border:none; display:flex; align-items:center; justify-content:center;
+  }
+
+  /* price tab */
+  .store-row{ display:flex; align-items:center; justify-content:space-between; }
+  .price-item-card{ padding:13px 14px; }
+  .price-item-card .head{ display:flex; justify-content:space-between; align-items:baseline; }
+  .price-item-card .head .n{ font-weight:700; font-size:15px; }
+  .price-item-card .range{ font-size:13px; font-weight:700; color:var(--forest); }
+  .store-list{ margin-top:8px; display:flex; flex-direction:column; gap:5px; }
+  .store-list .srow{ display:flex; justify-content:space-between; font-size:12.5px; color:var(--ink-soft); }
+  .store-list .srow.best{ color:var(--forest); font-weight:700; }
+  .rec-thumb{ width:100%; border-radius:10px; margin-top:8px; max-height:220px; object-fit:contain; background:#f2f0e8; }
+  .rec-list-row{ display:flex; gap:8px; align-items:center; }
+  .rec-list-row input{ font-size:13px; padding:8px 10px; }
+  .rec-list-row .colnote{ flex:1.4; }
+  .rec-list-row .colprice{ width:78px; }
+  .rec-list-row .colgram{ width:64px; }
+  .rec-list-row .del{ background:none;border:none;color:var(--brick);font-size:18px; padding:4px; }
+  .loading-dots{ text-align:center; padding:24px; color:var(--ink-soft); font-size:13px; }
+  .toast{
+    position:fixed; left:50%; bottom:110px; transform:translateX(-50%);
+    background:var(--ink); color:#fff; padding:9px 16px; border-radius:99px;
+    font-size:13px; z-index:80; opacity:0; transition:opacity .25s;
+    pointer-events:none;
+  }
+  .toast.show{ opacity:1; }
+  .small-note{ font-size:11.5px; color:var(--ink-soft); margin-top:6px; }
+  .segmented{ display:flex; background:#EFEBDC; border-radius:10px; padding:3px; }
+  .segmented button{ flex:1; border:none; background:none; padding:8px 0; font-size:13px; font-weight:700; color:var(--ink-soft); border-radius:8px; }
+  .segmented button.active{ background:#fff; color:var(--forest); box-shadow:0 1px 3px rgba(0,0,0,0.1); }
+</style>
+</head>
+<body>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<div id="app">
+  <header class="top">
+    <div style="display:flex; align-items:center; justify-content:space-between;">
+      <h1>買いもの手帳</h1>
+      <button onclick="openSettingsSheet()" style="background:none;border:none;font-size:20px;padding:4px 6px;color:var(--ink-soft);">⚙️</button>
+    </div>
+    <div class="sub" id="headerSub">読み込み中…</div>
+  </header>
+
+  <main>
+    <!-- 買うもの -->
+    <section class="view active" id="view-buy">
+      <div class="section-title">冷蔵庫からの自動リマインド <span id="autoCount"></span></div>
+      <div class="list" id="autoList"></div>
+
+      <div class="section-title">買うものリスト</div>
+      <div class="list" id="buyList"></div>
+    </section>
+
+    <!-- 冷蔵庫 -->
+    <section class="view" id="view-fridge">
+      <div class="fridge-body" id="fridgeBody"></div>
+    </section>
+
+    <!-- 値段記録 -->
+    <section class="view" id="view-price">
+      <div class="section-title">お店 <button class="btn small ghost" style="color:var(--forest)" onclick="openStoreSheet()">＋ 追加・編集</button></div>
+      <div class="chip-row" id="storeChips"></div>
+
+      <div class="section-title" style="margin-top:20px;">レシートから登録</div>
+      <div class="card" style="text-align:center;">
+        <input type="file" accept="image/*" capture="environment" id="receiptInput" style="display:none" onchange="onReceiptSelected(event)">
+        <button class="btn primary" onclick="document.getElementById('receiptInput').click()">📷 レシート写真を登録</button>
+        <div class="small-note">写真から商品名と金額を自動で読み取ります</div>
+      </div>
+
+      <div class="section-title" style="margin-top:20px;">商品ごとの価格比較</div>
+      <div class="list" id="priceList"></div>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-tab="buy" class="active" onclick="switchTab('buy')"><span class="ic">🛒</span>買うもの</button>
+    <button data-tab="fridge" onclick="switchTab('fridge')"><span class="ic">🧊</span>冷蔵庫</button>
+    <button data-tab="price" onclick="switchTab('price')"><span class="ic">💴</span>値段記録</button>
+  </nav>
+
+  <button class="fab" id="fabBtn" onclick="onFabTap()">＋</button>
+</div>
+
+<div class="sheet-backdrop" id="backdrop" onclick="closeAllSheets()"></div>
+
+<!-- 買うもの追加シート -->
+<div class="sheet" id="sheetAddBuy">
+  <div class="handle"></div>
+  <div class="sheet-head"><h2>買うものを選ぶ</h2><button onclick="closeAllSheets()">閉じる</button></div>
+  <div class="sheet-body">
+    <label class="field">カテゴリ</label>
+    <div class="chip-row" id="catChips"></div>
+    <label class="field">商品（複数選択できます）</label>
+    <div class="chip-row" id="itemChips"></div>
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <input id="customItemInput" placeholder="リストにない商品名を入力">
+      <button class="btn primary" style="width:auto; padding:10px 16px;" onclick="addCustomItem()">追加</button>
+    </div>
+    <button class="btn primary block" onclick="confirmAddSelected()">選んだ商品を追加</button>
+  </div>
+</div>
+
+<!-- 冷蔵庫アイテム編集シート -->
+<div class="sheet" id="sheetFridgeItem">
+  <div class="handle"></div>
+  <div class="sheet-head"><h2>冷蔵庫アイテム</h2><button onclick="closeAllSheets()">閉じる</button></div>
+  <div class="sheet-body" id="fridgeItemBody"></div>
+</div>
+
+<!-- お店管理シート -->
+<div class="sheet" id="sheetStore">
+  <div class="handle"></div>
+  <div class="sheet-head"><h2>よく使うお店</h2><button onclick="closeAllSheets()">閉じる</button></div>
+  <div class="sheet-body">
+    <div class="list" id="storeEditList"></div>
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <input id="newStoreInput" placeholder="お店の名前">
+      <button class="btn primary" style="width:auto; padding:10px 16px;" onclick="addStore()">追加</button>
+    </div>
+  </div>
+</div>
+
+<!-- レシート確認シート -->
+<div class="sheet" id="sheetReceipt">
+  <div class="handle"></div>
+  <div class="sheet-head"><h2>レシートの読み取り結果</h2><button onclick="closeAllSheets()">閉じる</button></div>
+  <div class="sheet-body" id="receiptBody"></div>
+</div>
+
+<!-- 設定シート -->
+<div class="sheet" id="sheetSettings">
+  <div class="handle"></div>
+  <div class="sheet-head"><h2>設定</h2><button onclick="closeAllSheets()">閉じる</button></div>
+  <div class="sheet-body">
+    <div class="section-title" style="margin-top:0;">Firebase（データ保存・パートナー共有）</div>
+    <div class="small-note" style="margin-bottom:10px;">Firebaseコンソール → プロジェクトの設定 → 全般 → 「マイアプリ」のSDK構成に表示される値を貼り付けてください。パートナーにも同じ内容を登録してもらうと、同じデータを共有できます。</div>
+    <label class="field">apiKey</label><input id="cfg_apiKey">
+    <label class="field">authDomain</label><input id="cfg_authDomain">
+    <label class="field">databaseURL</label><input id="cfg_databaseURL" placeholder="https://xxxx.firebaseio.com">
+    <label class="field">projectId</label><input id="cfg_projectId">
+    <label class="field">storageBucket</label><input id="cfg_storageBucket">
+    <label class="field">messagingSenderId</label><input id="cfg_messagingSenderId">
+    <label class="field">appId</label><input id="cfg_appId">
+    <button class="btn primary block" onclick="saveFirebaseSettings()">Firebase設定を保存</button>
+
+    <div class="section-title">Anthropic APIキー（レシート自動読み取り用）</div>
+    <div class="small-note" style="margin-bottom:10px;">console.anthropic.com で発行したAPIキーを登録してください。この端末にのみ保存され、Firebaseには送信されません。</div>
+    <label class="field">APIキー</label><input id="cfg_anthropicKey" placeholder="sk-ant-...">
+    <button class="btn primary block" onclick="saveAnthropicSettings()">APIキーを保存</button>
+    <div id="settingsStatus" class="small-note" style="margin-top:14px;"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===================== ストレージ層（Firebase Realtime Database） ===================== */
+const KEYS = {
+  master: 'master-items',
+  buy: 'buy-list',
+  fridge: 'fridge-items',
+  stores: 'stores',
+  prices: 'price-records'
+};
+const DB_ROOT = 'kaimono-techo'; // 家族・パートナーで共有するデータのルート
+
+let fbApp = null, fbDb = null;
+
+function loadFirebaseConfig(){
+  try{ return JSON.parse(localStorage.getItem('kaimono_firebase_config') || 'null'); }
+  catch(e){ return null; }
+}
+function isFirebaseConfigured(){ return !!loadFirebaseConfig(); }
+
+function initFirebase(){
+  const cfg = loadFirebaseConfig();
+  if(!cfg) return false;
+  try{
+    if(!fbApp){
+      fbApp = firebase.initializeApp(cfg);
+      fbDb = firebase.database();
+    }
+    return true;
+  }catch(e){
+    console.error('Firebase初期化に失敗しました', e);
+    return false;
+  }
+}
+
+function dbRef(key){ return fbDb.ref(DB_ROOT + '/' + key); }
+
+async function loadKey(key, fallback){
+  if(!fbDb) return fallback;
+  try{
+    const snap = await dbRef(key).once('value');
+    return snap.exists() ? snap.val() : fallback;
+  }catch(e){
+    console.error('読み込みに失敗しました', key, e);
+    toast('データの読み込みに失敗しました。設定を確認してください');
+    return fallback;
+  }
+}
+async function saveKey(key, value){
+  if(!fbDb){
+    toast('先に設定画面でFirebaseを登録してください');
+    return;
+  }
+  try{
+    await dbRef(key).set(value);
+  }catch(e){
+    console.error('保存に失敗しました', key, e);
+    toast('保存できませんでした。通信環境や設定を確認してください');
+  }
+}
+
+/* ===================== 設定シート ===================== */
+function openSettingsSheet(){
+  const cfg = loadFirebaseConfig() || {};
+  ['apiKey','authDomain','databaseURL','projectId','storageBucket','messagingSenderId','appId'].forEach(k=>{
+    document.getElementById('cfg_'+k).value = cfg[k] || '';
+  });
+  document.getElementById('cfg_anthropicKey').value = localStorage.getItem('kaimono_anthropic_key') || '';
+  updateSettingsStatus();
+  openSheet('sheetSettings');
+}
+function updateSettingsStatus(){
+  const fbOk = isFirebaseConfigured();
+  const aiOk = !!localStorage.getItem('kaimono_anthropic_key');
+  document.getElementById('settingsStatus').innerHTML =
+    `Firebase: ${fbOk ? '✅ 登録済み' : '未登録'}　/　Anthropic APIキー: ${aiOk ? '✅ 登録済み' : '未登録'}`;
+}
+async function saveFirebaseSettings(){
+  const cfg = {};
+  ['apiKey','authDomain','databaseURL','projectId','storageBucket','messagingSenderId','appId'].forEach(k=>{
+    cfg[k] = document.getElementById('cfg_'+k).value.trim();
+  });
+  if(!cfg.apiKey || !cfg.databaseURL){
+    toast('apiKeyとdatabaseURLは必須です');
+    return;
+  }
+  localStorage.setItem('kaimono_firebase_config', JSON.stringify(cfg));
+  fbApp = null; fbDb = null;
+  const ok = initFirebase();
+  updateSettingsStatus();
+  if(ok){
+    toast('Firebaseを設定しました');
+    document.getElementById('headerSub').textContent = 'パートナーと共有中';
+    state.loadedTabs = {};
+    loadTab(state.activeTab);
+  }else{
+    toast('設定内容を確認してください');
+  }
+}
+function saveAnthropicSettings(){
+  const key = document.getElementById('cfg_anthropicKey').value.trim();
+  if(!key){ toast('APIキーを入力してください'); return; }
+  localStorage.setItem('kaimono_anthropic_key', key);
+  updateSettingsStatus();
+  toast('APIキーを保存しました');
+}
+
+/* ===================== 初期データ ===================== */
+const DEFAULT_MASTER = {
+  categories: [
+    {id:'veg', name:'野菜', emoji:'🥬', shelfLifeDays:5},
+    {id:'meat', name:'肉', emoji:'🥩', shelfLifeDays:3},
+    {id:'fish', name:'魚', emoji:'🐟', shelfLifeDays:2},
+    {id:'season', name:'調味料', emoji:'🧂', shelfLifeDays:180},
+    {id:'dairy', name:'乳製品', emoji:'🧀', shelfLifeDays:7},
+    {id:'drink', name:'飲み物', emoji:'🥤', shelfLifeDays:14},
+    {id:'other', name:'その他', emoji:'🍚', shelfLifeDays:5},
+  ],
+  items: [
+    ['veg','玉ねぎ'],['veg','にんじん'],['veg','じゃがいも'],['veg','キャベツ'],
+    ['veg','トマト'],['veg','きゅうり'],['veg','ほうれん草'],['veg','レタス'],
+    ['meat','鶏むね肉'],['meat','鶏もも肉'],['meat','豚バラ肉'],['meat','豚こま肉'],
+    ['meat','牛肉'],['meat','ひき肉'],
+    ['fish','鮭'],['fish','さば'],['fish','まぐろ'],['fish','えび'],['fish','ぶり'],
+    ['season','醤油'],['season','みそ'],['season','塩'],['season','砂糖'],['season','酢'],
+    ['season','みりん'],['season','料理酒'],['season','ケチャップ'],['season','マヨネーズ'],['season','油'],
+    ['dairy','牛乳'],['dairy','ヨーグルト'],['dairy','チーズ'],['dairy','バター'],
+    ['drink','水'],['drink','お茶'],['drink','ジュース'],['drink','コーヒー'],
+    ['other','卵'],['other','米'],['other','パン'],['other','豆腐'],['other','納豆'],
+  ].map(([catId,name],i)=>({id:'it_'+catId+'_'+i, catId, name}))
+};
+
+/* ===================== state ===================== */
+let state = {
+  master: null, buy: [], fridge: [], stores: [], prices: [],
+  loadedTabs: {}, activeTab:'buy', selectedCat:null, selectedItemIds:new Set(), customItems:[]
+};
+
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+/* ===================== 起動: 即座にUIを出し、非同期でデータ取得 ===================== */
+window.addEventListener('DOMContentLoaded', ()=>{
+  renderSkeleton();
+  if(isFirebaseConfigured() && initFirebase()){
+    loadTab('buy');
+  }else{
+    document.getElementById('headerSub').textContent = '⚙️ から設定してください';
+    document.getElementById('autoList').innerHTML = '';
+    document.getElementById('buyList').innerHTML = `<div class="empty"><div class="big">⚙️</div>右上の設定アイコンから<br>Firebaseを登録すると使えます</div>`;
+    openSettingsSheet();
+  }
+});
+
+function renderSkeleton(){
+  document.getElementById('autoList').innerHTML = '<div class="loading-dots">読み込み中…</div>';
+  document.getElementById('buyList').innerHTML = '';
+}
+
+async function ensureMaster(){
+  if(state.master) return state.master;
+  let m = await loadKey(KEYS.master, null);
+  if(!m){ m = DEFAULT_MASTER; await saveKey(KEYS.master, m); }
+  state.master = m;
+  return m;
+}
+
+async function loadTab(tab){
+  if(state.loadedTabs[tab]){ renderTab(tab); return; }
+  document.getElementById('headerSub').textContent = '読み込み中…';
+  if(tab==='buy'){
+    await ensureMaster();
+    state.buy = await loadKey(KEYS.buy, []);
+    state.fridge = await loadKey(KEYS.fridge, []);
+    state.prices = await loadKey(KEYS.prices, []);
+  }else if(tab==='fridge'){
+    await ensureMaster();
+    state.fridge = await loadKey(KEYS.fridge, []);
+  }else if(tab==='price'){
+    await ensureMaster();
+    state.stores = await loadKey(KEYS.stores, []);
+    state.prices = await loadKey(KEYS.prices, []);
+  }
+  state.loadedTabs[tab] = true;
+  document.getElementById('headerSub').textContent = 'パートナーと共有中';
+  renderTab(tab);
+}
+
+function switchTab(tab){
+  if(!fbDb){ openSettingsSheet(); return; }
+  state.activeTab = tab;
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+tab).classList.add('active');
+  document.querySelectorAll('nav.tabbar button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  document.getElementById('fabBtn').style.display = tab==='price' ? 'none' : 'flex';
+  loadTab(tab);
+}
+
+function renderTab(tab){
+  if(tab==='buy') renderBuyTab();
+  if(tab==='fridge') renderFridgeTab();
+  if(tab==='price') renderPriceTab();
+}
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+function catOf(catId){ return state.master.categories.find(c=>c.id===catId); }
+function itemName(itemIdOrName){
+  const it = state.master.items.find(i=>i.id===itemIdOrName);
+  return it ? it.name : itemIdOrName;
+}
+
+/* ===================== 買うもの ===================== */
+function computeAutoReminders(){
+  // 冷蔵庫内の調味料で期限切れのもの（買うものリストに未追加）
+  const now = Date.now();
+  const already = new Set(state.buy.map(b=>b.name));
+  return state.fridge.filter(f=>{
+    if(f.status==='used') return false;
+    if(f.catId !== 'season') return false;
+    const exp = expiryTimestamp(f);
+    if(!exp) return false;
+    return exp < now && !already.has(f.name);
+  });
+}
+
+function expiryTimestamp(f){
+  if(f.expiryDate) return new Date(f.expiryDate).getTime();
+  const cat = catOf(f.catId);
+  const days = cat ? cat.shelfLifeDays : 5;
+  return f.purchasedAt + days*86400000;
+}
+
+function priceRangeFor(name){
+  const recs = state.prices.filter(p=>p.name===name);
+  if(recs.length===0) return null;
+  const unitPrices = recs.map(r=> r.unit==='gram' ? r.per100g : r.price);
+  const min = Math.min(...unitPrices), max = Math.max(...unitPrices);
+  // per store best
+  const byStore = {};
+  recs.forEach(r=>{
+    const p = r.unit==='gram'? r.per100g : r.price;
+    if(!byStore[r.storeId] || byStore[r.storeId] > p) byStore[r.storeId]=p;
+  });
+  let bestStoreId=null, bestPrice=Infinity;
+  Object.entries(byStore).forEach(([sid,p])=>{ if(p<bestPrice){bestPrice=p; bestStoreId=sid;} });
+  return {min,max,unit: recs[0].unit, bestStoreId, bestPrice};
+}
+
+function renderBuyTab(){
+  const autoItems = computeAutoReminders();
+  const autoWrap = document.getElementById('autoList');
+  document.getElementById('autoCount').textContent = autoItems.length ? `(${autoItems.length})` : '';
+  if(autoItems.length===0){
+    autoWrap.innerHTML = '<div class="small-note" style="padding:2px 4px;">期限切れの調味料はありません</div>';
+  }else{
+    autoWrap.innerHTML = autoItems.map(f=>`
+      <div class="row">
+        <div class="check" style="border-color:var(--brick); color:var(--brick);">!</div>
+        <div style="flex:1">
+          <div class="name">${escapeHtml(f.name)}</div>
+          <div class="meta">冷蔵庫で期限切れ</div>
+        </div>
+        <button class="btn small" style="background:var(--brick); color:#fff;" onclick="addAutoReminder('${f.id}')">追加</button>
+      </div>
+    `).join('');
+  }
+
+  const listWrap = document.getElementById('buyList');
+  if(state.buy.length===0){
+    listWrap.innerHTML = `<div class="empty"><div class="big">🛒</div>右下の＋から<br>買うものを追加しましょう</div>`;
+  }else{
+    listWrap.innerHTML = state.buy.map(b=>{
+      const pr = priceRangeFor(b.name);
+      let priceHtml = '';
+      if(pr){
+        const unitLabel = pr.unit==='gram' ? '/100g' : '';
+        const bestStore = state.stores.find(s=>s.id===pr.bestStoreId);
+        priceHtml = `<div class="price-hint">¥${Math.round(pr.min)}〜${Math.round(pr.max)}${unitLabel}${bestStore?`・${escapeHtml(bestStore.name)}が最安`:''}</div>`;
+      }
+      return `
+      <div class="row ${b.done?'done':''}">
+        <div class="check" onclick="toggleBuyDone('${b.id}')">${b.done?'✓':''}</div>
+        <div style="flex:1" onclick="toggleBuyDone('${b.id}')">
+          <div class="name">${escapeHtml(b.name)}</div>
+          ${b.source==='auto' ? '<span class="tag auto">自動</span>' : ''}
+        </div>
+        ${priceHtml}
+        <button class="del" style="background:none;border:none;color:var(--ink-soft);font-size:18px;" onclick="removeBuy('${b.id}')">×</button>
+      </div>`;
+    }).join('');
+  }
+}
+
+async function addAutoReminder(fridgeId){
+  const f = state.fridge.find(x=>x.id===fridgeId);
+  if(!f) return;
+  state.buy.push({id:uid(), name:f.name, catId:f.catId, done:false, source:'auto', addedAt:Date.now()});
+  await saveKey(KEYS.buy, state.buy);
+  renderBuyTab();
+}
+
+async function toggleBuyDone(id){
+  const b = state.buy.find(x=>x.id===id);
+  if(!b) return;
+  b.done = !b.done;
+  if(b.done){
+    // 購入完了 → 冷蔵庫に自動追加
+    state.fridge = await loadKey(KEYS.fridge, state.fridge);
+    state.fridge.push({id:uid(), name:b.name, catId:b.catId||'other', purchasedAt: Date.now(), status:'active'});
+    await saveKey(KEYS.fridge, state.fridge);
+    state.buy = state.buy.filter(x=>x.id!==id);
+    toast(`「${b.name}」を冷蔵庫に入れました`);
+  }
+  await saveKey(KEYS.buy, state.buy);
+  renderBuyTab();
+}
+
+async function removeBuy(id){
+  state.buy = state.buy.filter(x=>x.id!==id);
+  await saveKey(KEYS.buy, state.buy);
+  renderBuyTab();
+}
+
+/* --- 追加シート --- */
+function onFabTap(){
+  if(!fbDb){ openSettingsSheet(); return; }
+  if(state.activeTab==='buy') openAddBuySheet();
+  else if(state.activeTab==='fridge') openFridgeAddSheet();
+}
+
+function openAddBuySheet(){
+  state.selectedCat = state.master.categories[0].id;
+  state.selectedItemIds = new Set();
+  state.customItems = [];
+  renderCatChips();
+  renderItemChips();
+  openSheet('sheetAddBuy');
+}
+
+function renderCatChips(){
+  document.getElementById('catChips').innerHTML = state.master.categories.map(c=>`
+    <div class="chip cat ${c.id===state.selectedCat?'selected':''}" onclick="selectCat('${c.id}')">${c.emoji} ${escapeHtml(c.name)}</div>
+  `).join('');
+}
+function selectCat(catId){
+  state.selectedCat = catId;
+  renderCatChips();
+  renderItemChips();
+}
+function renderItemChips(){
+  const items = state.master.items.filter(i=>i.catId===state.selectedCat);
+  document.getElementById('itemChips').innerHTML = items.map(i=>`
+    <div class="chip item ${state.selectedItemIds.has(i.id)?'selected':''}" onclick="toggleItemSel('${i.id}')">${escapeHtml(i.name)}</div>
+  `).join('');
+}
+function toggleItemSel(itemId){
+  if(state.selectedItemIds.has(itemId)) state.selectedItemIds.delete(itemId);
+  else state.selectedItemIds.add(itemId);
+  renderItemChips();
+}
+async function addCustomItem(){
+  const inp = document.getElementById('customItemInput');
+  const name = inp.value.trim();
+  if(!name) return;
+  const id = 'it_'+state.selectedCat+'_'+uid();
+  state.master.items.push({id, catId:state.selectedCat, name});
+  await saveKey(KEYS.master, state.master);
+  state.selectedItemIds.add(id);
+  inp.value='';
+  renderItemChips();
+  toast(`「${name}」をリストに追加しました。次回からタップで選べます`);
+}
+async function confirmAddSelected(){
+  const now = Date.now();
+  const already = new Set(state.buy.map(b=>b.name));
+  state.selectedItemIds.forEach(id=>{
+    const it = state.master.items.find(x=>x.id===id);
+    if(it && !already.has(it.name)){
+      state.buy.push({id:uid(), name:it.name, catId:it.catId, done:false, source:'manual', addedAt:now});
+    }
+  });
+  await saveKey(KEYS.buy, state.buy);
+  closeAllSheets();
+  renderBuyTab();
+}
+
+/* ===================== 冷蔵庫 ===================== */
+function daysLeft(f){
+  const exp = expiryTimestamp(f);
+  return Math.floor((exp - Date.now())/86400000);
+}
+function fridgeStatusClass(f){
+  if(f.status==='used') return null; // 使い切ったものは表示しない
+  const d = daysLeft(f);
+  if(d < 0) return 'expired';
+  if(d <= 1) return 'warn';
+  return '';
+}
+
+function renderFridgeTab(){
+  const cats = state.master.categories;
+  const wrap = document.getElementById('fridgeBody');
+  const active = state.fridge.filter(f=>f.status!=='used');
+  if(active.length===0){
+    wrap.innerHTML = `<div class="empty"><div class="big">🧊</div>冷蔵庫は空っぽです</div>`;
+    return;
+  }
+  wrap.innerHTML = cats.map(c=>{
+    const items = active.filter(f=>f.catId===c.id);
+    if(items.length===0) return '';
+    return `
+      <div class="shelf">
+        <div class="shelf-title">${c.emoji} ${escapeHtml(c.name)}</div>
+        <div class="shelf-grid">
+          ${items.map(f=>{
+            const cls = fridgeStatusClass(f);
+            const d = daysLeft(f);
+            const label = d<0 ? `${Math.abs(d)}日超過` : (d===0? '本日期限' : `あと${d}日`);
+            return `
+            <div class="jar ${cls}" onclick="openFridgeItem('${f.id}')">
+              <button class="xbtn" onclick="event.stopPropagation(); markUsed('${f.id}')">済</button>
+              <div class="emoji">${c.emoji}</div>
+              <div class="jname">${escapeHtml(f.name)}</div>
+              <div class="jdays">${label}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }).join('') || `<div class="empty">冷蔵庫は空っぽです</div>`;
+}
+
+async function markUsed(id){
+  const f = state.fridge.find(x=>x.id===id);
+  if(!f) return;
+  f.status='used'; f.usedAt=Date.now();
+  await saveKey(KEYS.fridge, state.fridge);
+  renderFridgeTab();
+  toast(`「${f.name}」を使い切りました`);
+}
+
+function openFridgeItem(id){
+  const f = state.fridge.find(x=>x.id===id);
+  if(!f) return;
+  const cat = catOf(f.catId);
+  document.getElementById('fridgeItemBody').innerHTML = `
+    <div style="text-align:center; margin-bottom:10px;">
+      <div style="font-size:40px;">${cat.emoji}</div>
+      <div style="font-size:17px; font-weight:700;">${escapeHtml(f.name)}</div>
+      <div class="small-note">購入日: ${new Date(f.purchasedAt).toLocaleDateString('ja-JP')}</div>
+    </div>
+    <label class="field">賞味期限・消費期限（わかれば）</label>
+    <input type="date" id="expInput" value="${f.expiryDate ? f.expiryDate.slice(0,10) : ''}">
+    <div class="small-note">未入力の場合は「${escapeHtml(cat.name)}」の目安（${cat.shelfLifeDays}日）で自動計算します</div>
+    <div class="row-actions" style="margin-top:16px;">
+      <button class="btn primary" style="flex:1" onclick="saveFridgeExpiry('${f.id}')">保存</button>
+      <button class="btn" style="flex:1; background:var(--sage); color:#fff;" onclick="markUsed('${f.id}'); closeAllSheets();">使い切った</button>
+    </div>
+    <button class="btn ghost block" onclick="deleteFridgeItem('${f.id}')">この記録を削除</button>
+  `;
+  openSheet('sheetFridgeItem');
+}
+async function saveFridgeExpiry(id){
+  const f = state.fridge.find(x=>x.id===id);
+  const v = document.getElementById('expInput').value;
+  f.expiryDate = v ? new Date(v).toISOString() : null;
+  await saveKey(KEYS.fridge, state.fridge);
+  closeAllSheets();
+  renderFridgeTab();
+}
+async function deleteFridgeItem(id){
+  state.fridge = state.fridge.filter(x=>x.id!==id);
+  await saveKey(KEYS.fridge, state.fridge);
+  closeAllSheets();
+  renderFridgeTab();
+}
+function openFridgeAddSheet(){
+  state.selectedCat = state.master.categories[0].id;
+  state.selectedItemIds = new Set();
+  renderCatChips();
+  renderItemChips();
+  openSheet('sheetAddBuy');
+  document.querySelector('#sheetAddBuy .sheet-head h2').textContent = '冷蔵庫に直接追加';
+  document.querySelector('#sheetAddBuy .btn.primary.block').setAttribute('onclick','confirmAddToFridge()');
+}
+async function confirmAddToFridge(){
+  const now = Date.now();
+  state.selectedItemIds.forEach(id=>{
+    const it = state.master.items.find(x=>x.id===id);
+    if(it) state.fridge.push({id:uid(), name:it.name, catId:it.catId, purchasedAt:now, status:'active'});
+  });
+  await saveKey(KEYS.fridge, state.fridge);
+  closeAllSheets();
+  document.querySelector('#sheetAddBuy .sheet-head h2').textContent = '買うものを選ぶ';
+  document.querySelector('#sheetAddBuy .btn.primary.block').setAttribute('onclick','confirmAddSelected()');
+  renderFridgeTab();
+}
+
+/* ===================== 値段記録 ===================== */
+function renderPriceTab(){
+  renderStoreChips();
+  const names = [...new Set(state.prices.map(p=>p.name))];
+  const wrap = document.getElementById('priceList');
+  if(names.length===0){
+    wrap.innerHTML = `<div class="empty"><div class="big">💴</div>レシートを登録すると<br>お店ごとの価格を比較できます</div>`;
+    return;
+  }
+  wrap.innerHTML = names.map(name=>{
+    const recs = state.prices.filter(p=>p.name===name).sort((a,b)=>b.recordedAt-a.recordedAt);
+    const pr = priceRangeFor(name);
+    const unitLabel = pr.unit==='gram' ? '/100g換算' : '';
+    const storeRows = state.stores.map(s=>{
+      const rr = recs.filter(r=>r.storeId===s.id);
+      if(rr.length===0) return null;
+      const price = Math.min(...rr.map(r=> r.unit==='gram'? r.per100g : r.price));
+      return {storeId:s.id, name:s.name, price};
+    }).filter(Boolean).sort((a,b)=>a.price-b.price);
+    return `
+    <div class="card price-item-card">
+      <div class="head">
+        <div class="n">${escapeHtml(name)}</div>
+        <div class="range">¥${Math.round(pr.min)}〜${Math.round(pr.max)}${unitLabel}</div>
+      </div>
+      <div class="store-list">
+        ${storeRows.map((s,i)=>`<div class="srow ${i===0?'best':''}">${escapeHtml(s.name)}${i===0?' ★最安':''}<span>¥${Math.round(s.price)}</span></div>`).join('')}
+      </div>
+      <button class="btn small ghost" style="margin-top:6px; padding-left:0;" onclick="openPriceHistory('${encodeURIComponent(name)}')">履歴を見る・修正する（${recs.length}件）</button>
+    </div>`;
+  }).join('');
+}
+
+function renderStoreChips(){
+  const wrap = document.getElementById('storeChips');
+  if(state.stores.length===0){
+    wrap.innerHTML = `<div class="small-note">「＋ 追加・編集」からよく行くお店を登録してください</div>`;
+    return;
+  }
+  wrap.innerHTML = state.stores.map(s=>`<div class="chip">${escapeHtml(s.name)}</div>`).join('');
+}
+
+function openStoreSheet(){
+  renderStoreEditList();
+  openSheet('sheetStore');
+}
+function renderStoreEditList(){
+  const wrap = document.getElementById('storeEditList');
+  if(state.stores.length===0){ wrap.innerHTML = '<div class="small-note">まだお店が登録されていません</div>'; return; }
+  wrap.innerHTML = state.stores.map(s=>`
+    <div class="row">
+      <input style="flex:1; border:none; background:none; font-weight:700; padding:4px 2px;" value="${escapeHtml(s.name)}" onchange="renameStore('${s.id}', this.value)">
+      <button class="del" onclick="deleteStore('${s.id}')">×</button>
+    </div>
+  `).join('');
+}
+async function addStore(){
+  const inp = document.getElementById('newStoreInput');
+  const name = inp.value.trim();
+  if(!name) return;
+  state.stores.push({id:uid(), name});
+  await saveKey(KEYS.stores, state.stores);
+  inp.value='';
+  renderStoreEditList();
+  renderStoreChips();
+}
+async function renameStore(id, name){
+  const s = state.stores.find(x=>x.id===id);
+  if(s) s.name = name.trim() || s.name;
+  await saveKey(KEYS.stores, state.stores);
+  renderStoreChips();
+}
+async function deleteStore(id){
+  state.stores = state.stores.filter(x=>x.id!==id);
+  await saveKey(KEYS.stores, state.stores);
+  renderStoreEditList();
+  renderStoreChips();
+}
+
+function openPriceHistory(nameEnc){
+  const name = decodeURIComponent(nameEnc);
+  const recs = state.prices.filter(p=>p.name===name).sort((a,b)=>b.recordedAt-a.recordedAt);
+  document.getElementById('receiptBody').innerHTML = `
+    <h3 style="margin-top:0;">${escapeHtml(name)}</h3>
+    <div class="list">
+      ${recs.map(r=>renderEditableRecRow(r)).join('')}
+    </div>
+  `;
+  document.querySelector('#sheetReceipt .sheet-head h2').textContent = '価格の履歴・修正';
+  openSheet('sheetReceipt');
+}
+function renderEditableRecRow(r){
+  const store = state.stores.find(s=>s.id===r.storeId);
+  return `
+    <div class="card" style="padding:10px 12px;">
+      <div class="rec-list-row" style="margin-bottom:6px;">
+        <select style="flex:1" onchange="updateRec('${r.id}','storeId',this.value)">
+          ${state.stores.map(s=>`<option value="${s.id}" ${s.id===r.storeId?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
+        </select>
+        <input class="colprice" type="number" value="${r.price}" onchange="updateRec('${r.id}','price',this.value)" placeholder="円">
+        <button class="del" onclick="deleteRec('${r.id}')">×</button>
+      </div>
+      <div class="rec-list-row">
+        <label style="font-size:11px; color:var(--ink-soft); display:flex; align-items:center; gap:4px;">
+          <input type="checkbox" style="width:auto" ${r.unit==='gram'?'checked':''} onchange="updateRec('${r.id}','unitToggle',this.checked)"> g表示
+        </label>
+        ${r.unit==='gram' ? `<input class="colgram" type="number" value="${r.grams||''}" placeholder="g" onchange="updateRec('${r.id}','grams',this.value)">` : ''}
+        <input class="colnote" value="${escapeHtml(r.note||'')}" placeholder="備考（例：3個入り）" onchange="updateRec('${r.id}','note',this.value)">
+      </div>
+      <div class="small-note">${new Date(r.recordedAt).toLocaleDateString('ja-JP')}${r.unit==='gram' && r.per100g ? `・100gあたり ¥${Math.round(r.per100g)}`:''}</div>
+    </div>
+  `;
+}
+async function updateRec(id, field, value){
+  const r = state.prices.find(x=>x.id===id);
+  if(!r) return;
+  if(field==='price') r.price = parseFloat(value)||0;
+  if(field==='note') r.note = value;
+  if(field==='storeId') r.storeId = value;
+  if(field==='grams') r.grams = parseFloat(value)||0;
+  if(field==='unitToggle') r.unit = value ? 'gram' : 'each';
+  if(r.unit==='gram' && r.grams) r.per100g = r.price / r.grams * 100;
+  await saveKey(KEYS.prices, state.prices);
+  openPriceHistory(encodeURIComponent(r.name));
+  renderPriceTab();
+}
+async function deleteRec(id){
+  const r = state.prices.find(x=>x.id===id);
+  state.prices = state.prices.filter(x=>x.id!==id);
+  await saveKey(KEYS.prices, state.prices);
+  if(r) openPriceHistory(encodeURIComponent(r.name));
+  renderPriceTab();
+}
+
+/* --- レシート読み取り(AI) --- */
+function onReceiptSelected(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const base64 = reader.result.split(',')[1];
+    const mediaType = file.type || 'image/jpeg';
+    showReceiptLoading(reader.result);
+    try{
+      const items = await ocrReceipt(base64, mediaType);
+      showReceiptReview(items, reader.result);
+    }catch(err){
+      console.error(err);
+      if(err.message === 'APIキー未設定'){
+        toast('設定画面でAnthropic APIキーを登録してください');
+        closeAllSheets();
+        openSettingsSheet();
+      }else{
+        toast('レシートの読み取りに失敗しました。もう一度お試しください');
+        closeAllSheets();
+      }
+    }
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+}
+
+function showReceiptLoading(imgSrc){
+  document.querySelector('#sheetReceipt .sheet-head h2').textContent = 'レシートの読み取り結果';
+  document.getElementById('receiptBody').innerHTML = `
+    <img class="rec-thumb" src="${imgSrc}">
+    <div class="loading-dots">読み取り中…</div>
+  `;
+  openSheet('sheetReceipt');
+}
+
+async function ocrReceipt(base64, mediaType){
+  const apiKey = localStorage.getItem('kaimono_anthropic_key');
+  if(!apiKey){ throw new Error('APIキー未設定'); }
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type":"application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1000,
+      messages: [{
+        role:"user",
+        content:[
+          {type:"image", source:{type:"base64", media_type:mediaType, data:base64}},
+          {type:"text", text: "これは日本のスーパーのレシート画像です。写っている商品名と金額（円、税込表示があればそれを優先）を読み取り、JSON配列のみを返してください。前置きや説明、コードブロックの記号は一切不要です。フォーマット: [{\"name\":\"商品名\",\"price\":数値,\"storeGuess\":\"レシートに店名があれば店名、なければ空文字\"}] 。商品名はレシートの表記をなるべく簡潔な一般名詞に正規化してください（例:「ﾄﾏﾄ」→「トマト」）。読み取れない場合は空配列を返してください。"}
+        ]
+      }]
+    })
+  });
+  const data = await response.json();
+  const textBlock = (data.content||[]).find(c=>c.type==='text');
+  let text = textBlock ? textBlock.text : '[]';
+  text = text.replace(/```json|```/g,'').trim();
+  try{ return JSON.parse(text); }catch(e){ return []; }
+}
+
+let pendingReceiptItems = [];
+function showReceiptReview(items, imgSrc){
+  pendingReceiptItems = items.map(it=>({...it, id:uid(), storeId: guessStoreId(it.storeGuess), unit:'each', grams:0, note:''}));
+  renderReceiptReview(imgSrc);
+}
+function guessStoreId(guess){
+  if(!guess) return state.stores[0] ? state.stores[0].id : '';
+  const found = state.stores.find(s=> guess.includes(s.name) || s.name.includes(guess));
+  return found ? found.id : (state.stores[0] ? state.stores[0].id : '');
+}
+function renderReceiptReview(imgSrc){
+  document.getElementById('receiptBody').innerHTML = `
+    <img class="rec-thumb" src="${imgSrc}">
+    <label class="field">お店</label>
+    <select id="receiptStoreSelect" onchange="pendingReceiptItems.forEach(it=>it.storeId=this.value)">
+      ${state.stores.length===0 ? '<option value="">お店を先に登録してください</option>' : state.stores.map(s=>`<option value="${s.id}" ${s.id===pendingReceiptItems[0]?.storeId?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
+    </select>
+    <label class="field">読み取れた商品（内容を確認・修正してください）</label>
+    <div class="list" id="receiptItemsList"></div>
+    <button class="btn small" style="margin-top:8px;" onclick="addBlankReceiptItem()">＋ 商品を手動で追加</button>
+    <button class="btn primary block" onclick="confirmReceiptSave()">この内容で保存する</button>
+  `;
+  renderReceiptItemsList();
+}
+function renderReceiptItemsList(){
+  document.getElementById('receiptItemsList').innerHTML = pendingReceiptItems.map(it=>`
+    <div class="card" style="padding:10px 12px;">
+      <div class="rec-list-row" style="margin-bottom:6px;">
+        <input style="flex:1.4" value="${escapeHtml(it.name)}" onchange="editPending('${it.id}','name',this.value)" placeholder="商品名">
+        <input class="colprice" type="number" value="${it.price}" onchange="editPending('${it.id}','price',this.value)" placeholder="円">
+        <button class="del" onclick="removePending('${it.id}')">×</button>
+      </div>
+      <div class="rec-list-row">
+        <label style="font-size:11px; color:var(--ink-soft); display:flex; align-items:center; gap:4px;">
+          <input type="checkbox" style="width:auto" ${it.unit==='gram'?'checked':''} onchange="editPending('${it.id}','unitToggle',this.checked)"> g表示
+        </label>
+        ${it.unit==='gram' ? `<input class="colgram" type="number" value="${it.grams||''}" placeholder="g" onchange="editPending('${it.id}','grams',this.value)">` : ''}
+        <input class="colnote" value="${escapeHtml(it.note||'')}" placeholder="備考（例：3個入り）" onchange="editPending('${it.id}','note',this.value)">
+      </div>
+    </div>
+  `).join('');
+}
+function editPending(id, field, value){
+  const it = pendingReceiptItems.find(x=>x.id===id);
+  if(!it) return;
+  if(field==='price') it.price = parseFloat(value)||0;
+  if(field==='name') it.name = value;
+  if(field==='note') it.note = value;
+  if(field==='grams') it.grams = parseFloat(value)||0;
+  if(field==='unitToggle') it.unit = value ? 'gram':'each';
+}
+function removePending(id){
+  pendingReceiptItems = pendingReceiptItems.filter(x=>x.id!==id);
+  renderReceiptItemsList();
+}
+function addBlankReceiptItem(){
+  pendingReceiptItems.push({id:uid(), name:'', price:0, storeId: state.stores[0]?state.stores[0].id:'', unit:'each', grams:0, note:''});
+  renderReceiptItemsList();
+}
+async function confirmReceiptSave(){
+  const storeSel = document.getElementById('receiptStoreSelect');
+  const storeId = storeSel ? storeSel.value : (state.stores[0]?state.stores[0].id:'');
+  if(!storeId){ toast('先にお店を登録してください'); return; }
+  const now = Date.now();
+  pendingReceiptItems.forEach(it=>{
+    if(!it.name.trim()) return;
+    const rec = {
+      id: uid(), name: it.name.trim(), storeId, price: it.price||0,
+      unit: it.unit, grams: it.grams||0, note: it.note||'', recordedAt: now
+    };
+    if(rec.unit==='gram' && rec.grams) rec.per100g = rec.price/rec.grams*100;
+    state.prices.push(rec);
+  });
+  await saveKey(KEYS.prices, state.prices);
+  closeAllSheets();
+  renderPriceTab();
+  toast('レシートの内容を保存しました');
+}
+
+/* ===================== シート共通 ===================== */
+function openSheet(id){
+  document.getElementById('backdrop').classList.add('show');
+  document.getElementById(id).classList.add('show');
+}
+function closeAllSheets(){
+  document.getElementById('backdrop').classList.remove('show');
+  document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('show'));
+}
+function escapeHtml(s){
+  return String(s??'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+</script>
+</body>
+</html>
