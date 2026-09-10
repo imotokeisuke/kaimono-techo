@@ -307,6 +307,7 @@
         <input type="file" accept="image/*" capture="environment" id="receiptInput" style="display:none" onchange="onReceiptSelected(event)">
         <button class="btn primary" onclick="document.getElementById('receiptInput').click()">📷 レシート写真を登録</button>
         <div class="small-note">写真から商品名と金額を自動で読み取ります</div>
+        <button class="btn small ghost" style="margin-top:10px;" onclick="openManualPriceSheet()">✏️ 手入力で登録する</button>
       </div>
 
       <div class="section-title" style="margin-top:20px;">商品ごとの価格比較</div>
@@ -369,6 +370,30 @@
   <div class="sheet-body" id="receiptBody"></div>
 </div>
 
+<!-- 手入力シート -->
+<div class="sheet" id="sheetManualPrice">
+  <div class="handle"></div>
+  <div class="sheet-head"><h2>価格を手入力</h2><button onclick="closeAllSheets()">閉じる</button></div>
+  <div class="sheet-body">
+    <label class="field">お店</label>
+    <select id="manualStoreSelect"></select>
+    <label class="field">商品名</label>
+    <input id="manualItemName" placeholder="例：玉ねぎ">
+    <label class="field">金額（円）</label>
+    <input id="manualPrice" type="number" placeholder="円">
+    <label class="field" style="display:flex; align-items:center; gap:6px;">
+      <input type="checkbox" id="manualUnitGram" style="width:auto"> グラム表示にする（100gあたりで比較）
+    </label>
+    <div id="manualGramWrap" style="display:none;">
+      <label class="field">グラム数</label>
+      <input id="manualGrams" type="number" placeholder="g">
+    </div>
+    <label class="field">備考（任意）</label>
+    <input id="manualNote" placeholder="例：3個入り、セール価格など">
+    <button class="btn primary block" onclick="saveManualPrice()">保存する</button>
+  </div>
+</div>
+
 <!-- 設定シート -->
 <div class="sheet" id="sheetSettings">
   <div class="handle"></div>
@@ -385,10 +410,10 @@
     <label class="field">appId</label><input id="cfg_appId">
     <button class="btn primary block" onclick="saveFirebaseSettings()">Firebase設定を保存</button>
 
-    <div class="section-title">Anthropic APIキー（レシート自動読み取り用）</div>
-    <div class="small-note" style="margin-bottom:10px;">console.anthropic.com で発行したAPIキーを登録してください。この端末にのみ保存され、Firebaseには送信されません。</div>
-    <label class="field">APIキー</label><input id="cfg_anthropicKey" placeholder="sk-ant-...">
-    <button class="btn primary block" onclick="saveAnthropicSettings()">APIキーを保存</button>
+    <div class="section-title">Google Gemini APIキー（レシート自動読み取り用・無料）</div>
+    <div class="small-note" style="margin-bottom:10px;">Google AI Studio（aistudio.google.com）で無料で発行できるAPIキーです。クレジットカード登録は不要ですが、1日あたりのリクエスト数に上限があります（個人利用には十分です）。この端末にのみ保存され、Firebaseには送信されません。</div>
+    <label class="field">APIキー</label><input id="cfg_geminiKey" placeholder="AIza...">
+    <button class="btn primary block" onclick="saveGeminiSettings()">APIキーを保存</button>
     <div id="settingsStatus" class="small-note" style="margin-top:14px;"></div>
   </div>
 </div>
@@ -461,15 +486,15 @@ function openSettingsSheet(){
   ['apiKey','authDomain','databaseURL','projectId','storageBucket','messagingSenderId','appId'].forEach(k=>{
     document.getElementById('cfg_'+k).value = cfg[k] || '';
   });
-  document.getElementById('cfg_anthropicKey').value = localStorage.getItem('kaimono_anthropic_key') || '';
+  document.getElementById('cfg_geminiKey').value = localStorage.getItem('kaimono_gemini_key') || '';
   updateSettingsStatus();
   openSheet('sheetSettings');
 }
 function updateSettingsStatus(){
   const fbOk = isFirebaseConfigured();
-  const aiOk = !!localStorage.getItem('kaimono_anthropic_key');
+  const aiOk = !!localStorage.getItem('kaimono_gemini_key');
   document.getElementById('settingsStatus').innerHTML =
-    `Firebase: ${fbOk ? '✅ 登録済み' : '未登録'}　/　Anthropic APIキー: ${aiOk ? '✅ 登録済み' : '未登録'}`;
+    `Firebase: ${fbOk ? '✅ 登録済み' : '未登録'}　/　Gemini APIキー: ${aiOk ? '✅ 登録済み' : '未登録'}`;
 }
 async function saveFirebaseSettings(){
   const cfg = {};
@@ -493,10 +518,10 @@ async function saveFirebaseSettings(){
     toast('設定内容を確認してください');
   }
 }
-function saveAnthropicSettings(){
-  const key = document.getElementById('cfg_anthropicKey').value.trim();
+function saveGeminiSettings(){
+  const key = document.getElementById('cfg_geminiKey').value.trim();
   if(!key){ toast('APIキーを入力してください'); return; }
-  localStorage.setItem('kaimono_anthropic_key', key);
+  localStorage.setItem('kaimono_gemini_key', key);
   updateSettingsStatus();
   toast('APIキーを保存しました');
 }
@@ -1029,6 +1054,50 @@ async function deleteRec(id){
   renderPriceTab();
 }
 
+/* --- 手入力での価格登録 --- */
+function openManualPriceSheet(){
+  if(state.stores.length===0){
+    toast('先に「お店」を登録してください');
+    openStoreSheet();
+    return;
+  }
+  const sel = document.getElementById('manualStoreSelect');
+  sel.innerHTML = state.stores.map(s=>`<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+  document.getElementById('manualItemName').value = '';
+  document.getElementById('manualPrice').value = '';
+  document.getElementById('manualUnitGram').checked = false;
+  document.getElementById('manualGrams').value = '';
+  document.getElementById('manualNote').value = '';
+  document.getElementById('manualGramWrap').style.display = 'none';
+  document.getElementById('manualUnitGram').onchange = (e)=>{
+    document.getElementById('manualGramWrap').style.display = e.target.checked ? 'block' : 'none';
+  };
+  openSheet('sheetManualPrice');
+}
+async function saveManualPrice(){
+  const name = document.getElementById('manualItemName').value.trim();
+  const price = parseFloat(document.getElementById('manualPrice').value) || 0;
+  const storeId = document.getElementById('manualStoreSelect').value;
+  const isGram = document.getElementById('manualUnitGram').checked;
+  const grams = parseFloat(document.getElementById('manualGrams').value) || 0;
+  const note = document.getElementById('manualNote').value.trim();
+  if(!name){ toast('商品名を入力してください'); return; }
+  if(!price){ toast('金額を入力してください'); return; }
+  if(isGram && !grams){ toast('グラム数を入力してください'); return; }
+  const rec = {
+    id: uid(), name, storeId, price,
+    unit: isGram ? 'gram' : 'each',
+    grams: isGram ? grams : 0,
+    note, recordedAt: Date.now()
+  };
+  if(rec.unit==='gram') rec.per100g = rec.price / rec.grams * 100;
+  state.prices.push(rec);
+  await saveKey(KEYS.prices, state.prices);
+  closeAllSheets();
+  renderPriceTab();
+  toast('価格を登録しました');
+}
+
 /* --- レシート読み取り(AI) --- */
 function onReceiptSelected(e){
   const file = e.target.files[0];
@@ -1044,11 +1113,11 @@ function onReceiptSelected(e){
     }catch(err){
       console.error(err);
       if(err.message === 'APIキー未設定'){
-        toast('設定画面でAnthropic APIキーを登録してください');
+        toast('設定画面でGemini APIキーを登録してください');
         closeAllSheets();
         openSettingsSheet();
       }else{
-        toast('レシートの読み取りに失敗しました。もう一度お試しください');
+        toast('読み取りに失敗しました: ' + (err.message || '不明なエラー'));
         closeAllSheets();
       }
     }
@@ -1067,31 +1136,31 @@ function showReceiptLoading(imgSrc){
 }
 
 async function ocrReceipt(base64, mediaType){
-  const apiKey = localStorage.getItem('kaimono_anthropic_key');
+  const apiKey = localStorage.getItem('kaimono_gemini_key');
   if(!apiKey){ throw new Error('APIキー未設定'); }
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const prompt = "これは日本のスーパーのレシート画像です。写っている商品名と金額（円、税込表示があればそれを優先）を読み取り、JSON配列のみを返してください。前置きや説明、コードブロックの記号は一切不要です。フォーマット: [{\"name\":\"商品名\",\"price\":数値,\"storeGuess\":\"レシートに店名があれば店名、なければ空文字\"}] 。商品名はレシートの表記をなるべく簡潔な一般名詞に正規化してください（例:「ﾄﾏﾄ」→「トマト」）。読み取れない場合は空配列を返してください。";
+  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
     method: "POST",
     headers: {
       "Content-Type":"application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true"
+      "x-goog-api-key": apiKey
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1000,
-      messages: [{
-        role:"user",
-        content:[
-          {type:"image", source:{type:"base64", media_type:mediaType, data:base64}},
-          {type:"text", text: "これは日本のスーパーのレシート画像です。写っている商品名と金額（円、税込表示があればそれを優先）を読み取り、JSON配列のみを返してください。前置きや説明、コードブロックの記号は一切不要です。フォーマット: [{\"name\":\"商品名\",\"price\":数値,\"storeGuess\":\"レシートに店名があれば店名、なければ空文字\"}] 。商品名はレシートの表記をなるべく簡潔な一般名詞に正規化してください（例:「ﾄﾏﾄ」→「トマト」）。読み取れない場合は空配列を返してください。"}
+      contents: [{
+        role: "user",
+        parts: [
+          {inline_data: {mime_type: mediaType, data: base64}},
+          {text: prompt}
         ]
       }]
     })
   });
   const data = await response.json();
-  const textBlock = (data.content||[]).find(c=>c.type==='text');
-  let text = textBlock ? textBlock.text : '[]';
+  if(data.error){
+    console.error(data.error);
+    throw new Error(data.error.message || 'Gemini APIエラー');
+  }
+  let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
   text = text.replace(/```json|```/g,'').trim();
   try{ return JSON.parse(text); }catch(e){ return []; }
 }
