@@ -381,12 +381,19 @@
     <input id="manualItemName" placeholder="例：玉ねぎ">
     <label class="field">金額（円）</label>
     <input id="manualPrice" type="number" placeholder="円">
-    <label class="field" style="display:flex; align-items:center; gap:6px;">
-      <input type="checkbox" id="manualUnitGram" style="width:auto"> グラム表示にする（100gあたりで比較）
-    </label>
+    <label class="field">比較のしかた</label>
+    <select id="manualUnitSelect" onchange="onManualUnitChange()">
+      <option value="each">そのまま（1点の金額で比較）</option>
+      <option value="gram">グラムで比較（100gあたり）</option>
+      <option value="count">本数で比較（1本あたり）</option>
+    </select>
     <div id="manualGramWrap" style="display:none;">
       <label class="field">グラム数</label>
       <input id="manualGrams" type="number" placeholder="g">
+    </div>
+    <div id="manualCountWrap" style="display:none;">
+      <label class="field">本数</label>
+      <input id="manualCount" type="number" placeholder="例：3">
     </div>
     <label class="field">備考（任意）</label>
     <input id="manualNote" placeholder="例：3個入り、セール価格など">
@@ -655,15 +662,25 @@ function expiryTimestamp(f){
   return f.purchasedAt + days*86400000;
 }
 
+function unitPriceOf(r){
+  if(r.unit==='gram') return r.per100g;
+  if(r.unit==='count') return r.perUnit;
+  return r.price;
+}
+function unitLabelOf(unit){
+  if(unit==='gram') return '/100g';
+  if(unit==='count') return '/本';
+  return '';
+}
 function priceRangeFor(name){
   const recs = state.prices.filter(p=>p.name===name);
   if(recs.length===0) return null;
-  const unitPrices = recs.map(r=> r.unit==='gram' ? r.per100g : r.price);
+  const unitPrices = recs.map(unitPriceOf);
   const min = Math.min(...unitPrices), max = Math.max(...unitPrices);
   // per store best
   const byStore = {};
   recs.forEach(r=>{
-    const p = r.unit==='gram'? r.per100g : r.price;
+    const p = unitPriceOf(r);
     if(!byStore[r.storeId] || byStore[r.storeId] > p) byStore[r.storeId]=p;
   });
   let bestStoreId=null, bestPrice=Infinity;
@@ -698,7 +715,7 @@ function renderBuyTab(){
       const pr = priceRangeFor(b.name);
       let priceHtml = '';
       if(pr){
-        const unitLabel = pr.unit==='gram' ? '/100g' : '';
+        const unitLabel = unitLabelOf(pr.unit);
         const bestStore = state.stores.find(s=>s.id===pr.bestStoreId);
         priceHtml = `<div class="price-hint">¥${Math.round(pr.min)}〜${Math.round(pr.max)}${unitLabel}${bestStore?`・${escapeHtml(bestStore.name)}が最安`:''}</div>`;
       }
@@ -932,11 +949,11 @@ function renderPriceTab(){
   wrap.innerHTML = names.map(name=>{
     const recs = state.prices.filter(p=>p.name===name).sort((a,b)=>b.recordedAt-a.recordedAt);
     const pr = priceRangeFor(name);
-    const unitLabel = pr.unit==='gram' ? '/100g換算' : '';
+    const unitLabel = pr.unit==='gram' ? '/100g換算' : (pr.unit==='count' ? '/本換算' : '');
     const storeRows = state.stores.map(s=>{
       const rr = recs.filter(r=>r.storeId===s.id);
       if(rr.length===0) return null;
-      const price = Math.min(...rr.map(r=> r.unit==='gram'? r.per100g : r.price));
+      const price = Math.min(...rr.map(unitPriceOf));
       return {storeId:s.id, name:s.name, price};
     }).filter(Boolean).sort((a,b)=>a.price-b.price);
     return `
@@ -1016,32 +1033,41 @@ function renderEditableRecRow(r){
   return `
     <div class="card" style="padding:10px 12px;">
       <div class="rec-list-row" style="margin-bottom:6px;">
-        <select style="flex:1" onchange="updateRec('${r.id}','storeId',this.value)">
-          ${state.stores.map(s=>`<option value="${s.id}" ${s.id===r.storeId?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
-        </select>
+        <input class="colnote" style="flex:1.4" value="${escapeHtml(r.name)}" onchange="updateRec('${r.id}','name',this.value)" placeholder="商品名">
         <input class="colprice" type="number" value="${r.price}" onchange="updateRec('${r.id}','price',this.value)" placeholder="円">
         <button class="del" onclick="deleteRec('${r.id}')">×</button>
       </div>
+      <div class="rec-list-row" style="margin-bottom:6px;">
+        <select style="flex:1" onchange="updateRec('${r.id}','storeId',this.value)">
+          ${state.stores.map(s=>`<option value="${s.id}" ${s.id===r.storeId?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
+        </select>
+        <select onchange="updateRec('${r.id}','unit',this.value)">
+          <option value="each" ${r.unit==='each'?'selected':''}>そのまま</option>
+          <option value="gram" ${r.unit==='gram'?'selected':''}>グラムで比較</option>
+          <option value="count" ${r.unit==='count'?'selected':''}>本数で比較</option>
+        </select>
+      </div>
       <div class="rec-list-row">
-        <label style="font-size:11px; color:var(--ink-soft); display:flex; align-items:center; gap:4px;">
-          <input type="checkbox" style="width:auto" ${r.unit==='gram'?'checked':''} onchange="updateRec('${r.id}','unitToggle',this.checked)"> g表示
-        </label>
         ${r.unit==='gram' ? `<input class="colgram" type="number" value="${r.grams||''}" placeholder="g" onchange="updateRec('${r.id}','grams',this.value)">` : ''}
+        ${r.unit==='count' ? `<input class="colgram" type="number" value="${r.count||''}" placeholder="本数" onchange="updateRec('${r.id}','count',this.value)">` : ''}
         <input class="colnote" value="${escapeHtml(r.note||'')}" placeholder="備考（例：3個入り）" onchange="updateRec('${r.id}','note',this.value)">
       </div>
-      <div class="small-note">${new Date(r.recordedAt).toLocaleDateString('ja-JP')}${r.unit==='gram' && r.per100g ? `・100gあたり ¥${Math.round(r.per100g)}`:''}</div>
+      <div class="small-note">${new Date(r.recordedAt).toLocaleDateString('ja-JP')}${r.unit==='gram' && r.per100g ? `・100gあたり ¥${Math.round(r.per100g)}`:''}${r.unit==='count' && r.perUnit ? `・1本あたり ¥${Math.round(r.perUnit)}`:''}</div>
     </div>
   `;
 }
 async function updateRec(id, field, value){
   const r = state.prices.find(x=>x.id===id);
   if(!r) return;
+  if(field==='name') r.name = value.trim() || r.name;
   if(field==='price') r.price = parseFloat(value)||0;
   if(field==='note') r.note = value;
   if(field==='storeId') r.storeId = value;
   if(field==='grams') r.grams = parseFloat(value)||0;
-  if(field==='unitToggle') r.unit = value ? 'gram' : 'each';
+  if(field==='count') r.count = parseFloat(value)||0;
+  if(field==='unit') r.unit = value;
   if(r.unit==='gram' && r.grams) r.per100g = r.price / r.grams * 100;
+  if(r.unit==='count' && r.count) r.perUnit = r.price / r.count;
   await saveKey(KEYS.prices, state.prices);
   openPriceHistory(encodeURIComponent(r.name));
   renderPriceTab();
@@ -1065,32 +1091,39 @@ function openManualPriceSheet(){
   sel.innerHTML = state.stores.map(s=>`<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
   document.getElementById('manualItemName').value = '';
   document.getElementById('manualPrice').value = '';
-  document.getElementById('manualUnitGram').checked = false;
+  document.getElementById('manualUnitSelect').value = 'each';
   document.getElementById('manualGrams').value = '';
+  document.getElementById('manualCount').value = '';
   document.getElementById('manualNote').value = '';
   document.getElementById('manualGramWrap').style.display = 'none';
-  document.getElementById('manualUnitGram').onchange = (e)=>{
-    document.getElementById('manualGramWrap').style.display = e.target.checked ? 'block' : 'none';
-  };
+  document.getElementById('manualCountWrap').style.display = 'none';
   openSheet('sheetManualPrice');
+}
+function onManualUnitChange(){
+  const u = document.getElementById('manualUnitSelect').value;
+  document.getElementById('manualGramWrap').style.display = u==='gram' ? 'block' : 'none';
+  document.getElementById('manualCountWrap').style.display = u==='count' ? 'block' : 'none';
 }
 async function saveManualPrice(){
   const name = document.getElementById('manualItemName').value.trim();
   const price = parseFloat(document.getElementById('manualPrice').value) || 0;
   const storeId = document.getElementById('manualStoreSelect').value;
-  const isGram = document.getElementById('manualUnitGram').checked;
+  const unit = document.getElementById('manualUnitSelect').value;
   const grams = parseFloat(document.getElementById('manualGrams').value) || 0;
+  const count = parseFloat(document.getElementById('manualCount').value) || 0;
   const note = document.getElementById('manualNote').value.trim();
   if(!name){ toast('商品名を入力してください'); return; }
   if(!price){ toast('金額を入力してください'); return; }
-  if(isGram && !grams){ toast('グラム数を入力してください'); return; }
+  if(unit==='gram' && !grams){ toast('グラム数を入力してください'); return; }
+  if(unit==='count' && !count){ toast('本数を入力してください'); return; }
   const rec = {
-    id: uid(), name, storeId, price,
-    unit: isGram ? 'gram' : 'each',
-    grams: isGram ? grams : 0,
+    id: uid(), name, storeId, price, unit,
+    grams: unit==='gram' ? grams : 0,
+    count: unit==='count' ? count : 0,
     note, recordedAt: Date.now()
   };
-  if(rec.unit==='gram') rec.per100g = rec.price / rec.grams * 100;
+  if(unit==='gram') rec.per100g = rec.price / rec.grams * 100;
+  if(unit==='count') rec.perUnit = rec.price / rec.count;
   state.prices.push(rec);
   await saveKey(KEYS.prices, state.prices);
   closeAllSheets();
@@ -1167,7 +1200,7 @@ async function ocrReceipt(base64, mediaType){
 
 let pendingReceiptItems = [];
 function showReceiptReview(items, imgSrc){
-  pendingReceiptItems = items.map(it=>({...it, id:uid(), storeId: guessStoreId(it.storeGuess), unit:'each', grams:0, note:''}));
+  pendingReceiptItems = items.map(it=>({...it, id:uid(), storeId: guessStoreId(it.storeGuess), unit:'each', grams:0, count:0, note:''}));
   renderReceiptReview(imgSrc);
 }
 function guessStoreId(guess){
@@ -1197,12 +1230,17 @@ function renderReceiptItemsList(){
         <input class="colprice" type="number" value="${it.price}" onchange="editPending('${it.id}','price',this.value)" placeholder="円">
         <button class="del" onclick="removePending('${it.id}')">×</button>
       </div>
-      <div class="rec-list-row">
-        <label style="font-size:11px; color:var(--ink-soft); display:flex; align-items:center; gap:4px;">
-          <input type="checkbox" style="width:auto" ${it.unit==='gram'?'checked':''} onchange="editPending('${it.id}','unitToggle',this.checked)"> g表示
-        </label>
+      <div class="rec-list-row" style="margin-bottom:6px;">
+        <select style="flex:1" onchange="editPending('${it.id}','unit',this.value)">
+          <option value="each" ${it.unit==='each'?'selected':''}>そのまま</option>
+          <option value="gram" ${it.unit==='gram'?'selected':''}>グラムで比較</option>
+          <option value="count" ${it.unit==='count'?'selected':''}>本数で比較</option>
+        </select>
         ${it.unit==='gram' ? `<input class="colgram" type="number" value="${it.grams||''}" placeholder="g" onchange="editPending('${it.id}','grams',this.value)">` : ''}
-        <input class="colnote" value="${escapeHtml(it.note||'')}" placeholder="備考（例：3個入り）" onchange="editPending('${it.id}','note',this.value)">
+        ${it.unit==='count' ? `<input class="colgram" type="number" value="${it.count||''}" placeholder="本数" onchange="editPending('${it.id}','count',this.value)">` : ''}
+      </div>
+      <div class="rec-list-row">
+        <input class="colnote" style="flex:1" value="${escapeHtml(it.note||'')}" placeholder="備考（例：3個入り）" onchange="editPending('${it.id}','note',this.value)">
       </div>
     </div>
   `).join('');
@@ -1214,14 +1252,15 @@ function editPending(id, field, value){
   if(field==='name') it.name = value;
   if(field==='note') it.note = value;
   if(field==='grams') it.grams = parseFloat(value)||0;
-  if(field==='unitToggle') it.unit = value ? 'gram':'each';
+  if(field==='count') it.count = parseFloat(value)||0;
+  if(field==='unit'){ it.unit = value; renderReceiptItemsList(); }
 }
 function removePending(id){
   pendingReceiptItems = pendingReceiptItems.filter(x=>x.id!==id);
   renderReceiptItemsList();
 }
 function addBlankReceiptItem(){
-  pendingReceiptItems.push({id:uid(), name:'', price:0, storeId: state.stores[0]?state.stores[0].id:'', unit:'each', grams:0, note:''});
+  pendingReceiptItems.push({id:uid(), name:'', price:0, storeId: state.stores[0]?state.stores[0].id:'', unit:'each', grams:0, count:0, note:''});
   renderReceiptItemsList();
 }
 async function confirmReceiptSave(){
@@ -1233,9 +1272,10 @@ async function confirmReceiptSave(){
     if(!it.name.trim()) return;
     const rec = {
       id: uid(), name: it.name.trim(), storeId, price: it.price||0,
-      unit: it.unit, grams: it.grams||0, note: it.note||'', recordedAt: now
+      unit: it.unit, grams: it.grams||0, count: it.count||0, note: it.note||'', recordedAt: now
     };
     if(rec.unit==='gram' && rec.grams) rec.per100g = rec.price/rec.grams*100;
+    if(rec.unit==='count' && rec.count) rec.perUnit = rec.price/rec.count;
     state.prices.push(rec);
   });
   await saveKey(KEYS.prices, state.prices);
