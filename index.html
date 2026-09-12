@@ -53,7 +53,7 @@
   header.top{
     position:sticky; top:0; z-index:20;
     background:var(--bg);
-    padding:14px 18px 10px;
+    padding:calc(14px + env(safe-area-inset-top)) 18px 10px;
     border-bottom:1px solid var(--line);
   }
   header.top h1{
@@ -385,14 +385,14 @@
     <select id="manualUnitSelect" onchange="onManualUnitChange()">
       <option value="each">そのまま（1点の金額で比較）</option>
       <option value="gram">グラムで比較（100gあたり）</option>
-      <option value="count">本数で比較（1本あたり）</option>
+      <option value="count">個数で比較（1個あたり）</option>
     </select>
     <div id="manualGramWrap" style="display:none;">
       <label class="field">グラム数</label>
       <input id="manualGrams" type="number" placeholder="g">
     </div>
     <div id="manualCountWrap" style="display:none;">
-      <label class="field">本数</label>
+      <label class="field">個数</label>
       <input id="manualCount" type="number" placeholder="例：3">
     </div>
     <label class="field">備考（任意）</label>
@@ -555,7 +555,8 @@ const DEFAULT_MASTER = {
     ['dairy','牛乳'],['dairy','ヨーグルト'],['dairy','チーズ'],['dairy','バター'],
     ['drink','水'],['drink','お茶'],['drink','ジュース'],['drink','コーヒー'],
     ['other','卵'],['other','米'],['other','パン'],['other','豆腐'],['other','納豆'],
-  ].map(([catId,name],i)=>({id:'it_'+catId+'_'+i, catId, name}))
+  ].map(([catId,name],i)=>({id:'it_'+catId+'_'+i, catId, name})),
+  shelfLifeOverrides: {} // 商品名ごとにカスタムの標準消費日数を保存する場所
 };
 
 /* ===================== state ===================== */
@@ -565,6 +566,9 @@ let state = {
 };
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+// 個数表示の単位名。「本」「枚」など呼び方を変えたい場合はここだけ書き換えれば全画面に反映されます。
+const COUNT_UNIT_NAME = '個';
 
 /* ===================== 起動: 即座にUIを出し、非同期でデータ取得 ===================== */
 window.addEventListener('DOMContentLoaded', ()=>{
@@ -588,6 +592,7 @@ async function ensureMaster(){
   if(state.master) return state.master;
   let m = await loadKey(KEYS.master, null);
   if(!m){ m = DEFAULT_MASTER; await saveKey(KEYS.master, m); }
+  if(!m.shelfLifeOverrides) m.shelfLifeOverrides = {}; // 古いデータ用の互換対応
   state.master = m;
   return m;
 }
@@ -655,11 +660,15 @@ function computeAutoReminders(){
   });
 }
 
+function defaultShelfLifeDays(f){
+  const override = state.master.shelfLifeOverrides && state.master.shelfLifeOverrides[f.name];
+  if(override != null) return override;
+  const cat = catOf(f.catId);
+  return cat ? cat.shelfLifeDays : 5;
+}
 function expiryTimestamp(f){
   if(f.expiryDate) return new Date(f.expiryDate).getTime();
-  const cat = catOf(f.catId);
-  const days = cat ? cat.shelfLifeDays : 5;
-  return f.purchasedAt + days*86400000;
+  return f.purchasedAt + defaultShelfLifeDays(f)*86400000;
 }
 
 function unitPriceOf(r){
@@ -669,7 +678,7 @@ function unitPriceOf(r){
 }
 function unitLabelOf(unit){
   if(unit==='gram') return '/100g';
-  if(unit==='count') return '/本';
+  if(unit==='count') return '/'+COUNT_UNIT_NAME;
   return '';
 }
 function priceRangeFor(name){
@@ -884,22 +893,52 @@ function openFridgeItem(id){
   const f = state.fridge.find(x=>x.id===id);
   if(!f) return;
   const cat = catOf(f.catId);
+  const override = state.master.shelfLifeOverrides && state.master.shelfLifeOverrides[f.name];
   document.getElementById('fridgeItemBody').innerHTML = `
     <div style="text-align:center; margin-bottom:10px;">
       <div style="font-size:40px;">${cat.emoji}</div>
       <div style="font-size:17px; font-weight:700;">${escapeHtml(f.name)}</div>
       <div class="small-note">購入日: ${new Date(f.purchasedAt).toLocaleDateString('ja-JP')}</div>
     </div>
-    <label class="field">賞味期限・消費期限（わかれば）</label>
+    <label class="field">賞味期限・消費期限（今回分だけ。わかれば）</label>
     <input type="date" id="expInput" value="${f.expiryDate ? f.expiryDate.slice(0,10) : ''}">
-    <div class="small-note">未入力の場合は「${escapeHtml(cat.name)}」の目安（${cat.shelfLifeDays}日）で自動計算します</div>
+    <div class="small-note">未入力の場合は下の「標準日数」で自動計算します</div>
     <div class="row-actions" style="margin-top:16px;">
       <button class="btn primary" style="flex:1" onclick="saveFridgeExpiry('${f.id}')">保存</button>
       <button class="btn" style="flex:1; background:var(--sage); color:#fff;" onclick="markUsed('${f.id}'); closeAllSheets();">使い切った</button>
     </div>
-    <button class="btn ghost block" onclick="deleteFridgeItem('${f.id}')">この記録を削除</button>
+
+    <div class="section-title" style="margin:20px 0 8px;">「${escapeHtml(f.name)}」の標準消費日数</div>
+    <div class="small-note" style="margin-bottom:8px;">購入日から何日で自動的に期限切れとするか（日付未入力のときに使われます）。ここで設定すると、今後この商品を追加したときにも使われます。</div>
+    <input type="number" id="itemDefaultDays" value="${override != null ? override : cat.shelfLifeDays}">
+    <div class="small-note">現在: ${override != null ? `この商品専用に${override}日` : `「${escapeHtml(cat.name)}」の標準（${cat.shelfLifeDays}日）を使用中`}</div>
+    <button class="btn primary block" onclick="saveItemDefaultDays('${f.id}')">この商品の標準日数として保存</button>
+    ${override != null ? `<button class="btn ghost block" onclick="clearItemDefaultDays('${f.id}')">カスタム設定を削除して「${escapeHtml(cat.name)}」の標準に戻す</button>` : ''}
+
+    <button class="btn ghost block" style="margin-top:20px;" onclick="deleteFridgeItem('${f.id}')">この記録を削除</button>
   `;
   openSheet('sheetFridgeItem');
+}
+async function saveItemDefaultDays(fridgeId){
+  const f = state.fridge.find(x=>x.id===fridgeId);
+  if(!f) return;
+  const days = parseFloat(document.getElementById('itemDefaultDays').value) || 0;
+  if(!days){ toast('日数を入力してください'); return; }
+  if(!state.master.shelfLifeOverrides) state.master.shelfLifeOverrides = {};
+  state.master.shelfLifeOverrides[f.name] = days;
+  await saveKey(KEYS.master, state.master);
+  toast(`「${f.name}」の標準消費日数を${days}日に設定しました`);
+  openFridgeItem(fridgeId);
+  renderFridgeTab();
+}
+async function clearItemDefaultDays(fridgeId){
+  const f = state.fridge.find(x=>x.id===fridgeId);
+  if(!f) return;
+  delete state.master.shelfLifeOverrides[f.name];
+  await saveKey(KEYS.master, state.master);
+  toast(`「${f.name}」のカスタム設定を削除しました`);
+  openFridgeItem(fridgeId);
+  renderFridgeTab();
 }
 async function saveFridgeExpiry(id){
   const f = state.fridge.find(x=>x.id===id);
@@ -949,7 +988,7 @@ function renderPriceTab(){
   wrap.innerHTML = names.map(name=>{
     const recs = state.prices.filter(p=>p.name===name).sort((a,b)=>b.recordedAt-a.recordedAt);
     const pr = priceRangeFor(name);
-    const unitLabel = pr.unit==='gram' ? '/100g換算' : (pr.unit==='count' ? '/本換算' : '');
+    const unitLabel = pr.unit==='gram' ? '/100g換算' : (pr.unit==='count' ? `/${COUNT_UNIT_NAME}換算` : '');
     const storeRows = state.stores.map(s=>{
       const rr = recs.filter(r=>r.storeId===s.id);
       if(rr.length===0) return null;
@@ -1044,15 +1083,15 @@ function renderEditableRecRow(r){
         <select onchange="updateRec('${r.id}','unit',this.value)">
           <option value="each" ${r.unit==='each'?'selected':''}>そのまま</option>
           <option value="gram" ${r.unit==='gram'?'selected':''}>グラムで比較</option>
-          <option value="count" ${r.unit==='count'?'selected':''}>本数で比較</option>
+          <option value="count" ${r.unit==='count'?'selected':''}>個数で比較</option>
         </select>
       </div>
       <div class="rec-list-row">
         ${r.unit==='gram' ? `<input class="colgram" type="number" value="${r.grams||''}" placeholder="g" onchange="updateRec('${r.id}','grams',this.value)">` : ''}
-        ${r.unit==='count' ? `<input class="colgram" type="number" value="${r.count||''}" placeholder="本数" onchange="updateRec('${r.id}','count',this.value)">` : ''}
+        ${r.unit==='count' ? `<input class="colgram" type="number" value="${r.count||''}" placeholder="個数" onchange="updateRec('${r.id}','count',this.value)">` : ''}
         <input class="colnote" value="${escapeHtml(r.note||'')}" placeholder="備考（例：3個入り）" onchange="updateRec('${r.id}','note',this.value)">
       </div>
-      <div class="small-note">${new Date(r.recordedAt).toLocaleDateString('ja-JP')}${r.unit==='gram' && r.per100g ? `・100gあたり ¥${Math.round(r.per100g)}`:''}${r.unit==='count' && r.perUnit ? `・1本あたり ¥${Math.round(r.perUnit)}`:''}</div>
+      <div class="small-note">${new Date(r.recordedAt).toLocaleDateString('ja-JP')}${r.unit==='gram' && r.per100g ? `・100gあたり ¥${Math.round(r.per100g)}`:''}${r.unit==='count' && r.perUnit ? `・1${COUNT_UNIT_NAME}あたり ¥${Math.round(r.perUnit)}`:''}</div>
     </div>
   `;
 }
@@ -1115,7 +1154,7 @@ async function saveManualPrice(){
   if(!name){ toast('商品名を入力してください'); return; }
   if(!price){ toast('金額を入力してください'); return; }
   if(unit==='gram' && !grams){ toast('グラム数を入力してください'); return; }
-  if(unit==='count' && !count){ toast('本数を入力してください'); return; }
+  if(unit==='count' && !count){ toast(`${COUNT_UNIT_NAME}数を入力してください`); return; }
   const rec = {
     id: uid(), name, storeId, price, unit,
     grams: unit==='gram' ? grams : 0,
@@ -1234,10 +1273,10 @@ function renderReceiptItemsList(){
         <select style="flex:1" onchange="editPending('${it.id}','unit',this.value)">
           <option value="each" ${it.unit==='each'?'selected':''}>そのまま</option>
           <option value="gram" ${it.unit==='gram'?'selected':''}>グラムで比較</option>
-          <option value="count" ${it.unit==='count'?'selected':''}>本数で比較</option>
+          <option value="count" ${it.unit==='count'?'selected':''}>個数で比較</option>
         </select>
         ${it.unit==='gram' ? `<input class="colgram" type="number" value="${it.grams||''}" placeholder="g" onchange="editPending('${it.id}','grams',this.value)">` : ''}
-        ${it.unit==='count' ? `<input class="colgram" type="number" value="${it.count||''}" placeholder="本数" onchange="editPending('${it.id}','count',this.value)">` : ''}
+        ${it.unit==='count' ? `<input class="colgram" type="number" value="${it.count||''}" placeholder="個数" onchange="editPending('${it.id}','count',this.value)">` : ''}
       </div>
       <div class="rec-list-row">
         <input class="colnote" style="flex:1" value="${escapeHtml(it.note||'')}" placeholder="備考（例：3個入り）" onchange="editPending('${it.id}','note',this.value)">
