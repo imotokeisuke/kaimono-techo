@@ -212,6 +212,9 @@
     padding:14px 12px 18px;
     box-shadow: inset 0 2px 6px rgba(0,0,0,0.08), var(--shadow);
   }
+  .fridge-body.warehouse-body{
+    background:linear-gradient(180deg,#F1E8D4,#E9DCC0);
+  }
   .shelf{
     background:rgba(255,255,255,0.55);
     border:1px solid rgba(255,255,255,0.7);
@@ -295,6 +298,8 @@
     <!-- 冷蔵庫 -->
     <section class="view" id="view-fridge">
       <div class="fridge-body" id="fridgeBody"></div>
+      <div class="section-title" style="margin-top:22px;">🗄️ 倉庫（日用品）</div>
+      <div class="fridge-body warehouse-body" id="warehouseBody"></div>
     </section>
 
     <!-- 値段記録 -->
@@ -350,6 +355,37 @@
   <div class="sheet-body" id="fridgeItemBody"></div>
 </div>
 
+<!-- 購入確定（値段記録）シート -->
+<div class="sheet" id="sheetBuyCheckout">
+  <div class="handle"></div>
+  <div class="sheet-head"><h2>購入を記録</h2><button onclick="closeAllSheets()">閉じる</button></div>
+  <div class="sheet-body">
+    <div style="text-align:center; font-size:17px; font-weight:700; margin-bottom:10px;" id="checkoutItemName"></div>
+    <label class="field">お店</label>
+    <select id="checkoutStoreSelect"></select>
+    <label class="field">金額（円）</label>
+    <input id="checkoutPrice" type="number" placeholder="円">
+    <label class="field">比較のしかた</label>
+    <select id="checkoutUnitSelect" onchange="onCheckoutUnitChange()">
+      <option value="each">そのまま（1点の金額で比較）</option>
+      <option value="gram">グラムで比較（100gあたり）</option>
+      <option value="count">個数で比較（1個あたり）</option>
+    </select>
+    <div id="checkoutGramWrap" style="display:none;">
+      <label class="field">グラム数</label>
+      <input id="checkoutGrams" type="number" placeholder="g">
+    </div>
+    <div id="checkoutCountWrap" style="display:none;">
+      <label class="field">個数</label>
+      <input id="checkoutCount" type="number" placeholder="例：3">
+    </div>
+    <label class="field">備考（任意）</label>
+    <input id="checkoutNote" placeholder="例：3個入り、セール価格など">
+    <button class="btn primary block" onclick="confirmCheckoutWithPrice()">記録して購入完了</button>
+    <button class="btn ghost block" onclick="confirmCheckoutSkip()">値段は記録せず購入完了</button>
+  </div>
+</div>
+
 <!-- お店管理シート -->
 <div class="sheet" id="sheetStore">
   <div class="handle"></div>
@@ -377,8 +413,13 @@
   <div class="sheet-body">
     <label class="field">お店</label>
     <select id="manualStoreSelect"></select>
-    <label class="field">商品名</label>
-    <input id="manualItemName" placeholder="例：玉ねぎ">
+    <label class="field">商品（カテゴリ→商品の順にタップしてください）</label>
+    <div class="chip-row" id="manualCatChips"></div>
+    <div class="chip-row" id="manualItemChips" style="margin-top:8px;"></div>
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <input id="manualCustomItemInput" placeholder="リストにない商品名を入力">
+      <button class="btn primary" style="width:auto; padding:10px 16px;" onclick="addCustomItemForManual()">追加</button>
+    </div>
     <label class="field">金額（円）</label>
     <input id="manualPrice" type="number" placeholder="円">
     <label class="field">比較のしかた</label>
@@ -536,13 +577,14 @@ function saveGeminiSettings(){
 /* ===================== 初期データ ===================== */
 const DEFAULT_MASTER = {
   categories: [
-    {id:'veg', name:'野菜', emoji:'🥬', shelfLifeDays:5},
-    {id:'meat', name:'肉', emoji:'🥩', shelfLifeDays:3},
-    {id:'fish', name:'魚', emoji:'🐟', shelfLifeDays:2},
-    {id:'season', name:'調味料', emoji:'🧂', shelfLifeDays:180},
-    {id:'dairy', name:'乳製品', emoji:'🧀', shelfLifeDays:7},
-    {id:'drink', name:'飲み物', emoji:'🥤', shelfLifeDays:14},
-    {id:'other', name:'その他', emoji:'🍚', shelfLifeDays:5},
+    {id:'veg', name:'野菜', emoji:'🥬', shelfLifeDays:5, storageType:'fridge'},
+    {id:'meat', name:'肉', emoji:'🥩', shelfLifeDays:3, storageType:'fridge'},
+    {id:'fish', name:'魚', emoji:'🐟', shelfLifeDays:2, storageType:'fridge'},
+    {id:'season', name:'調味料', emoji:'🧂', shelfLifeDays:180, storageType:'fridge'},
+    {id:'dairy', name:'乳製品', emoji:'🧀', shelfLifeDays:7, storageType:'fridge'},
+    {id:'drink', name:'飲み物', emoji:'🥤', shelfLifeDays:14, storageType:'fridge'},
+    {id:'other', name:'その他', emoji:'🍚', shelfLifeDays:5, storageType:'fridge'},
+    {id:'household', name:'日用品', emoji:'🧻', shelfLifeDays:90, storageType:'warehouse'},
   ],
   items: [
     ['veg','玉ねぎ'],['veg','にんじん'],['veg','じゃがいも'],['veg','キャベツ'],
@@ -555,6 +597,10 @@ const DEFAULT_MASTER = {
     ['dairy','牛乳'],['dairy','ヨーグルト'],['dairy','チーズ'],['dairy','バター'],
     ['drink','水'],['drink','お茶'],['drink','ジュース'],['drink','コーヒー'],
     ['other','卵'],['other','米'],['other','パン'],['other','豆腐'],['other','納豆'],
+    ['household','トイレットペーパー'],['household','ティッシュ'],['household','洗濯洗剤'],
+    ['household','柔軟剤'],['household','食器用洗剤'],['household','シャンプー'],
+    ['household','ボディソープ'],['household','歯磨き粉'],['household','ゴミ袋'],
+    ['household','ラップ'],['household','キッチンペーパー'],['household','電池'],
   ].map(([catId,name],i)=>({id:'it_'+catId+'_'+i, catId, name})),
   shelfLifeOverrides: {} // 商品名ごとにカスタムの標準消費日数を保存する場所
 };
@@ -593,6 +639,17 @@ async function ensureMaster(){
   let m = await loadKey(KEYS.master, null);
   if(!m){ m = DEFAULT_MASTER; await saveKey(KEYS.master, m); }
   if(!m.shelfLifeOverrides) m.shelfLifeOverrides = {}; // 古いデータ用の互換対応
+  // 「日用品」カテゴリが無い古いデータには後から追加する
+  if(!m.categories.some(c=>c.id==='household')){
+    m.categories.push({id:'household', name:'日用品', emoji:'🧻', shelfLifeDays:90, storageType:'warehouse'});
+    const defaultHouseholdItems = ['トイレットペーパー','ティッシュ','洗濯洗剤','柔軟剤','食器用洗剤','シャンプー','ボディソープ','歯磨き粉','ゴミ袋','ラップ','キッチンペーパー','電池'];
+    defaultHouseholdItems.forEach((name,i)=>{
+      m.items.push({id:'it_household_'+i, catId:'household', name});
+    });
+    await saveKey(KEYS.master, m);
+  }
+  // 既存カテゴリにstorageTypeが無い場合はfridge扱いにする
+  m.categories.forEach(c=>{ if(!c.storageType) c.storageType='fridge'; });
   state.master = m;
   return m;
 }
@@ -729,9 +786,9 @@ function renderBuyTab(){
         priceHtml = `<div class="price-hint">¥${Math.round(pr.min)}〜${Math.round(pr.max)}${unitLabel}${bestStore?`・${escapeHtml(bestStore.name)}が最安`:''}</div>`;
       }
       return `
-      <div class="row ${b.done?'done':''}">
-        <div class="check" onclick="toggleBuyDone('${b.id}')">${b.done?'✓':''}</div>
-        <div style="flex:1" onclick="toggleBuyDone('${b.id}')">
+      <div class="row">
+        <div class="check" onclick="openBuyCheckout('${b.id}')"></div>
+        <div style="flex:1" onclick="openBuyCheckout('${b.id}')">
           <div class="name">${escapeHtml(b.name)}</div>
           ${b.source==='auto' ? '<span class="tag auto">自動</span>' : ''}
         </div>
@@ -750,20 +807,73 @@ async function addAutoReminder(fridgeId){
   renderBuyTab();
 }
 
-async function toggleBuyDone(id){
-  const b = state.buy.find(x=>x.id===id);
+/* --- 購入確定（値段記録つき） --- */
+let checkoutBuyId = null;
+function openBuyCheckout(buyId){
+  const b = state.buy.find(x=>x.id===buyId);
   if(!b) return;
-  b.done = !b.done;
-  if(b.done){
-    // 購入完了 → 冷蔵庫に自動追加
-    state.fridge = await loadKey(KEYS.fridge, state.fridge);
-    state.fridge.push({id:uid(), name:b.name, catId:b.catId||'other', purchasedAt: Date.now(), status:'active'});
-    await saveKey(KEYS.fridge, state.fridge);
-    state.buy = state.buy.filter(x=>x.id!==id);
-    toast(`「${b.name}」を冷蔵庫に入れました`);
-  }
+  checkoutBuyId = buyId;
+  document.getElementById('checkoutItemName').textContent = b.name;
+  const sel = document.getElementById('checkoutStoreSelect');
+  sel.innerHTML = state.stores.length
+    ? state.stores.map(s=>`<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')
+    : '<option value="">お店が未登録です</option>';
+  document.getElementById('checkoutPrice').value = '';
+  document.getElementById('checkoutUnitSelect').value = 'each';
+  document.getElementById('checkoutGrams').value = '';
+  document.getElementById('checkoutCount').value = '';
+  document.getElementById('checkoutNote').value = '';
+  document.getElementById('checkoutGramWrap').style.display = 'none';
+  document.getElementById('checkoutCountWrap').style.display = 'none';
+  openSheet('sheetBuyCheckout');
+}
+function onCheckoutUnitChange(){
+  const u = document.getElementById('checkoutUnitSelect').value;
+  document.getElementById('checkoutGramWrap').style.display = u==='gram' ? 'block' : 'none';
+  document.getElementById('checkoutCountWrap').style.display = u==='count' ? 'block' : 'none';
+}
+async function completeBuyItem(b){
+  state.fridge.push({id:uid(), name:b.name, catId:b.catId||'other', purchasedAt: Date.now(), status:'active'});
+  await saveKey(KEYS.fridge, state.fridge);
+  state.buy = state.buy.filter(x=>x.id!==b.id);
   await saveKey(KEYS.buy, state.buy);
   renderBuyTab();
+  if(state.loadedTabs.fridge) renderFridgeTab();
+}
+async function confirmCheckoutWithPrice(){
+  const b = state.buy.find(x=>x.id===checkoutBuyId);
+  if(!b) return;
+  const storeId = document.getElementById('checkoutStoreSelect').value;
+  if(!storeId){ toast('先に「お店」を登録してください'); openStoreSheet(); return; }
+  const price = parseFloat(document.getElementById('checkoutPrice').value) || 0;
+  if(!price){ toast('金額を入力してください'); return; }
+  const unit = document.getElementById('checkoutUnitSelect').value;
+  const grams = parseFloat(document.getElementById('checkoutGrams').value) || 0;
+  const count = parseFloat(document.getElementById('checkoutCount').value) || 0;
+  if(unit==='gram' && !grams){ toast('グラム数を入力してください'); return; }
+  if(unit==='count' && !count){ toast(`${COUNT_UNIT_NAME}数を入力してください`); return; }
+  const note = document.getElementById('checkoutNote').value.trim();
+  const rec = {
+    id: uid(), name: b.name, storeId, price, unit,
+    grams: unit==='gram' ? grams : 0,
+    count: unit==='count' ? count : 0,
+    note, recordedAt: Date.now()
+  };
+  if(unit==='gram') rec.per100g = rec.price / rec.grams * 100;
+  if(unit==='count') rec.perUnit = rec.price / rec.count;
+  state.prices.push(rec);
+  await saveKey(KEYS.prices, state.prices);
+  await completeBuyItem(b);
+  closeAllSheets();
+  toast(`「${b.name}」を購入済みにしました`);
+  if(state.loadedTabs.price) renderPriceTab();
+}
+async function confirmCheckoutSkip(){
+  const b = state.buy.find(x=>x.id===checkoutBuyId);
+  if(!b) return;
+  await completeBuyItem(b);
+  closeAllSheets();
+  toast(`「${b.name}」を追加しました`);
 }
 
 async function removeBuy(id){
@@ -850,34 +960,48 @@ function fridgeStatusClass(f){
 
 function renderFridgeTab(){
   const cats = state.master.categories;
-  const wrap = document.getElementById('fridgeBody');
   const active = state.fridge.filter(f=>f.status!=='used');
-  if(active.length===0){
-    wrap.innerHTML = `<div class="empty"><div class="big">🧊</div>冷蔵庫は空っぽです</div>`;
-    return;
-  }
-  wrap.innerHTML = cats.map(c=>{
-    const items = active.filter(f=>f.catId===c.id);
-    if(items.length===0) return '';
-    return `
-      <div class="shelf">
-        <div class="shelf-title">${c.emoji} ${escapeHtml(c.name)}</div>
-        <div class="shelf-grid">
-          ${items.map(f=>{
+  const foodCats = cats.filter(c=>c.storageType!=='warehouse');
+  const warehouseCats = cats.filter(c=>c.storageType==='warehouse');
+
+  const fridgeWrap = document.getElementById('fridgeBody');
+  const foodHtml = foodCats.map(c=>shelfHtml(c, active.filter(f=>f.catId===c.id), true)).join('');
+  fridgeWrap.innerHTML = foodHtml || `<div class="empty"><div class="big">🧊</div>冷蔵庫は空っぽです</div>`;
+
+  const whWrap = document.getElementById('warehouseBody');
+  const whHtml = warehouseCats.map(c=>shelfHtml(c, active.filter(f=>f.catId===c.id), false)).join('');
+  whWrap.innerHTML = whHtml || `<div class="empty"><div class="big">🗄️</div>倉庫は空っぽです</div>`;
+}
+
+function shelfHtml(cat, items, withExpiry){
+  if(items.length===0) return '';
+  return `
+    <div class="shelf">
+      <div class="shelf-title">${cat.emoji} ${escapeHtml(cat.name)}</div>
+      <div class="shelf-grid">
+        ${items.map(f=>{
+          if(withExpiry){
             const cls = fridgeStatusClass(f);
             const d = daysLeft(f);
             const label = d<0 ? `${Math.abs(d)}日超過` : (d===0? '本日期限' : `あと${d}日`);
             return `
             <div class="jar ${cls}" onclick="openFridgeItem('${f.id}')">
               <button class="xbtn" onclick="event.stopPropagation(); markUsed('${f.id}')">済</button>
-              <div class="emoji">${c.emoji}</div>
+              <div class="emoji">${cat.emoji}</div>
               <div class="jname">${escapeHtml(f.name)}</div>
               <div class="jdays">${label}</div>
             </div>`;
-          }).join('')}
-        </div>
-      </div>`;
-  }).join('') || `<div class="empty">冷蔵庫は空っぽです</div>`;
+          }
+          return `
+            <div class="jar" onclick="openFridgeItem('${f.id}')">
+              <button class="xbtn" onclick="event.stopPropagation(); markUsed('${f.id}')">済</button>
+              <div class="emoji">${cat.emoji}</div>
+              <div class="jname">${escapeHtml(f.name)}</div>
+              <div class="jdays">在庫あり</div>
+            </div>`;
+        }).join('')}
+      </div>
+    </div>`;
 }
 
 async function markUsed(id){
@@ -893,6 +1017,21 @@ function openFridgeItem(id){
   const f = state.fridge.find(x=>x.id===id);
   if(!f) return;
   const cat = catOf(f.catId);
+
+  if(cat.storageType==='warehouse'){
+    document.getElementById('fridgeItemBody').innerHTML = `
+      <div style="text-align:center; margin-bottom:10px;">
+        <div style="font-size:40px;">${cat.emoji}</div>
+        <div style="font-size:17px; font-weight:700;">${escapeHtml(f.name)}</div>
+        <div class="small-note">購入日: ${new Date(f.purchasedAt).toLocaleDateString('ja-JP')}</div>
+      </div>
+      <button class="btn primary block" onclick="markUsed('${f.id}'); closeAllSheets();">使い切った・なくなった</button>
+      <button class="btn ghost block" onclick="deleteFridgeItem('${f.id}')">この記録を削除</button>
+    `;
+    openSheet('sheetFridgeItem');
+    return;
+  }
+
   const override = state.master.shelfLifeOverrides && state.master.shelfLifeOverrides[f.name];
   document.getElementById('fridgeItemBody').innerHTML = `
     <div style="text-align:center; margin-bottom:10px;">
@@ -1071,15 +1210,20 @@ function renderEditableRecRow(r){
   const store = state.stores.find(s=>s.id===r.storeId);
   return `
     <div class="card" style="padding:10px 12px;">
+      <div style="font-weight:700; font-size:12.5px; color:var(--forest); margin-bottom:6px; display:flex; align-items:center; gap:4px;">
+        🏬 ${store ? escapeHtml(store.name) : '店舗未設定'}
+      </div>
       <div class="rec-list-row" style="margin-bottom:6px;">
         <input class="colnote" style="flex:1.4" value="${escapeHtml(r.name)}" onchange="updateRec('${r.id}','name',this.value)" placeholder="商品名">
         <input class="colprice" type="number" value="${r.price}" onchange="updateRec('${r.id}','price',this.value)" placeholder="円">
         <button class="del" onclick="deleteRec('${r.id}')">×</button>
       </div>
       <div class="rec-list-row" style="margin-bottom:6px;">
-        <select style="flex:1" onchange="updateRec('${r.id}','storeId',this.value)">
+        <label style="font-size:11px; color:var(--ink-soft); flex:1;">お店を変更：
+        <select style="width:100%; margin-top:3px;" onchange="updateRec('${r.id}','storeId',this.value)">
           ${state.stores.map(s=>`<option value="${s.id}" ${s.id===r.storeId?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}
         </select>
+        </label>
         <select onchange="updateRec('${r.id}','unit',this.value)">
           <option value="each" ${r.unit==='each'?'selected':''}>そのまま</option>
           <option value="gram" ${r.unit==='gram'?'selected':''}>グラムで比較</option>
@@ -1128,7 +1272,10 @@ function openManualPriceSheet(){
   }
   const sel = document.getElementById('manualStoreSelect');
   sel.innerHTML = state.stores.map(s=>`<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
-  document.getElementById('manualItemName').value = '';
+  manualSelectedCat = state.master.categories[0].id;
+  manualSelectedItemName = null;
+  renderManualCatChips();
+  renderManualItemChips();
   document.getElementById('manualPrice').value = '';
   document.getElementById('manualUnitSelect').value = 'each';
   document.getElementById('manualGrams').value = '';
@@ -1138,20 +1285,53 @@ function openManualPriceSheet(){
   document.getElementById('manualCountWrap').style.display = 'none';
   openSheet('sheetManualPrice');
 }
+let manualSelectedCat = null, manualSelectedItemName = null;
+function renderManualCatChips(){
+  document.getElementById('manualCatChips').innerHTML = state.master.categories.map(c=>`
+    <div class="chip cat ${c.id===manualSelectedCat?'selected':''}" onclick="selectManualCat('${c.id}')">${c.emoji} ${escapeHtml(c.name)}</div>
+  `).join('');
+}
+function selectManualCat(catId){
+  manualSelectedCat = catId;
+  manualSelectedItemName = null;
+  renderManualCatChips();
+  renderManualItemChips();
+}
+function renderManualItemChips(){
+  const items = state.master.items.filter(i=>i.catId===manualSelectedCat);
+  document.getElementById('manualItemChips').innerHTML = items.map(i=>`
+    <div class="chip item ${i.name===manualSelectedItemName?'selected':''}" onclick="selectManualItem('${encodeURIComponent(i.name)}')">${escapeHtml(i.name)}</div>
+  `).join('');
+}
+function selectManualItem(nameEnc){
+  manualSelectedItemName = decodeURIComponent(nameEnc);
+  renderManualItemChips();
+}
+async function addCustomItemForManual(){
+  const inp = document.getElementById('manualCustomItemInput');
+  const name = inp.value.trim();
+  if(!name) return;
+  const id = 'it_'+manualSelectedCat+'_'+uid();
+  state.master.items.push({id, catId:manualSelectedCat, name});
+  await saveKey(KEYS.master, state.master);
+  manualSelectedItemName = name;
+  inp.value='';
+  renderManualItemChips();
+}
 function onManualUnitChange(){
   const u = document.getElementById('manualUnitSelect').value;
   document.getElementById('manualGramWrap').style.display = u==='gram' ? 'block' : 'none';
   document.getElementById('manualCountWrap').style.display = u==='count' ? 'block' : 'none';
 }
 async function saveManualPrice(){
-  const name = document.getElementById('manualItemName').value.trim();
+  const name = manualSelectedItemName;
   const price = parseFloat(document.getElementById('manualPrice').value) || 0;
   const storeId = document.getElementById('manualStoreSelect').value;
   const unit = document.getElementById('manualUnitSelect').value;
   const grams = parseFloat(document.getElementById('manualGrams').value) || 0;
   const count = parseFloat(document.getElementById('manualCount').value) || 0;
   const note = document.getElementById('manualNote').value.trim();
-  if(!name){ toast('商品名を入力してください'); return; }
+  if(!name){ toast('商品を選択してください'); return; }
   if(!price){ toast('金額を入力してください'); return; }
   if(unit==='gram' && !grams){ toast('グラム数を入力してください'); return; }
   if(unit==='count' && !count){ toast(`${COUNT_UNIT_NAME}数を入力してください`); return; }
